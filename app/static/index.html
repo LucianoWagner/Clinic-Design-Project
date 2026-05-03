@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Consultorio Agent</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel">
+        <header class="topbar">
+          <div>
+            <h1>Turnos médicos</h1>
+            <p>Chat web con asistente de voz desde navegador</p>
+          </div>
+          <label class="tts-toggle">
+            <input id="ttsToggle" type="checkbox" />
+            <span>Leer respuestas</span>
+          </label>
+        </header>
+
+        <div id="messages" class="messages" aria-live="polite"></div>
+
+        <form id="chatForm" class="composer">
+          <button id="voiceButton" class="icon-button" type="button" title="Hablar con el asistente">
+            🎙
+          </button>
+          <input
+            id="messageInput"
+            autocomplete="off"
+            placeholder="Escribí tu mensaje..."
+            maxlength="2000"
+          />
+          <button class="send-button" type="submit">Enviar</button>
+        </form>
+        <p id="status" class="status"></p>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

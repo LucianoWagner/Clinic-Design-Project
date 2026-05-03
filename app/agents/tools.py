@@ -1,0 +1,175 @@
+"""
+Definición de tools del agente usando el decorator @tool de LangChain.
+
+Patrón: factory build_tools(session, interaction) que devuelve funciones @tool
+con closures sobre la sesión de DB y la sesión de interacción.
+El LLM solo ve los argumentos de negocio; session e interaction son invisibles para él.
+"""
+import json
+from typing import Any
+
+from langchain_core.tools import tool
+from sqlmodel import Session
+
+from app.models.interaction import InteractionSession
+from app.schemas.appointment import (
+    ConfirmAppointmentToolInput,
+    HoldSlotToolInput,
+    IdentifyPatientToolInput,
+    SearchAvailabilityToolInput,
+)
+from app.services.appointment_service import (
+    AppointmentConflictError,
+    AppointmentService,
+    AppointmentValidationError,
+)
+from app.services.audit_service import AuditService, redact
+
+
+def _log_tool(
+    audit: AuditService,
+    interaction: InteractionSession,
+    tool_name: str,
+    arguments: dict[str, Any],
+    result: dict[str, Any],
+) -> None:
+    """Registra la ejecución de una tool con PII redactada."""
+    redacted = dict(arguments)
+    for key in ("document_number", "phone"):
+        if key in redacted:
+            redacted[key] = redact(str(redacted[key]))
+    audit.log(
+        interaction.id or 0,
+        "tool_call",
+        "tool",
+        tool_name=tool_name,
+        tool_args_redacted=redacted,
+        tool_result_summary=json.dumps(result, default=str)[:1000],
+    )
+
+
+def build_tools(session: Session, interaction: InteractionSession) -> list:
+    """
+    Construye la lista de tools del agente con closures sobre session e interaction.
+    Llamar una vez por request/turno para obtener tools con el contexto DB correcto.
+    """
+    appointments = AppointmentService(session)
+    audit = AuditService(session)
+
+    @tool
+    def identify_or_create_patient(
+        full_name: str,
+        document_number: str,
+        phone: str,
+        insurance_name: str | None = None,
+    ) -> dict:
+        """
+        Identifica o crea un paciente en el sistema.
+        Usar solo cuando el usuario ya proporcionó nombre completo, DNI y teléfono.
+        Devuelve patient_id confirmado en la base de datos.
+        """
+        args = {"full_name": full_name, "document_number": document_number, "phone": phone, "insurance_name": insurance_name}
+        try:
+            payload = IdentifyPatientToolInput(**args)
+            patient = appointments.identify_or_create_patient(payload)
+            interaction.patient_id = patient.id
+            interaction.collected_data = {
+                **(interaction.collected_data or {}),
+                "full_name": patient.full_name,
+                "document_number": patient.document_number,
+                "phone": patient.phone,
+                "insurance_name": patient.insurance_name,
+            }
+            session.add(interaction)
+            result: dict[str, Any] = {"ok": True, "patient_id": patient.id, "full_name": patient.full_name}
+        except (AppointmentValidationError, AppointmentConflictError) as exc:
+            result = {"ok": False, "error": str(exc)}
+        except Exception as exc:  # noqa: BLE001
+            result = {"ok": False, "error": "Error interno al identificar paciente."}
+        _log_tool(audit, interaction, "identify_or_create_patient", args, result)
+        return result
+
+    @tool
+    def search_availability(
+        specialty_name: str | None = None,
+        doctor_id: int | None = None,
+        limit: int = 5,
+    ) -> dict:
+        """
+        Busca turnos disponibles reales en la base de datos.
+        Requiere specialty_name o doctor_id. Nunca inventa disponibilidad.
+        Devuelve lista de slots con id, médico, especialidad, fecha y hora.
+        """
+        args = {"specialty_name": specialty_name, "doctor_id": doctor_id, "limit": limit}
+        try:
+            payload = SearchAvailabilityToolInput(**args)
+            slots = appointments.search_availability(
+                specialty_name=payload.specialty_name,
+                doctor_id=payload.doctor_id,
+                limit=payload.limit,
+            )
+            interaction.current_state = "presenting_options" if slots else "no_availability"
+            session.add(interaction)
+            result = {"ok": True, "slots": [slot.model_dump(mode="json") for slot in slots]}
+        except (AppointmentValidationError, AppointmentConflictError) as exc:
+            result = {"ok": False, "error": str(exc)}
+        except Exception:  # noqa: BLE001
+            result = {"ok": False, "error": "Error interno al buscar disponibilidad."}
+        _log_tool(audit, interaction, "search_availability", args, result)
+        return result
+
+    @tool
+    def hold_slot(slot_id: int) -> dict:
+        """
+        Retiene temporalmente un turno elegido por el usuario antes de confirmar.
+        El slot queda reservado por un tiempo limitado para esta sesión.
+        Usar antes de pedir confirmación final al usuario.
+        """
+        args = {"slot_id": slot_id}
+        try:
+            payload = HoldSlotToolInput(**args)
+            slot = appointments.hold_slot(payload.slot_id, interaction.id or 0)
+            interaction.current_state = "awaiting_explicit_confirmation"
+            session.add(interaction)
+            result = {
+                "ok": True,
+                "slot_id": slot.id,
+                "held_until": slot.held_until.isoformat() if slot.held_until else None,
+            }
+        except (AppointmentValidationError, AppointmentConflictError) as exc:
+            result = {"ok": False, "error": str(exc)}
+        except Exception:  # noqa: BLE001
+            result = {"ok": False, "error": "Error interno al retener el turno."}
+        _log_tool(audit, interaction, "hold_slot", args, result)
+        return result
+
+    @tool
+    def confirm_appointment(explicit_confirmation: bool, slot_id: int | None = None) -> dict:
+        """
+        Confirma definitivamente el turno retenido. Requiere confirmación explícita del usuario.
+        No usar sin que el usuario haya dicho explícitamente que confirma.
+        Antes de llamar esta tool, resumir al usuario: paciente, especialidad, médico, fecha y hora.
+        """
+        args = {"explicit_confirmation": explicit_confirmation, "slot_id": slot_id}
+        try:
+            payload = ConfirmAppointmentToolInput(**args)
+            resolved_slot_id = payload.slot_id or interaction.pending_slot_id
+            if not resolved_slot_id:
+                result: dict[str, Any] = {"ok": False, "error": "No hay un turno retenido para confirmar."}
+            else:
+                appointment = appointments.confirm_appointment(
+                    slot_id=resolved_slot_id,
+                    interaction_session_id=interaction.id or 0,
+                    explicit_confirmation=payload.explicit_confirmation,
+                )
+                interaction.current_state = "confirmed"
+                session.add(interaction)
+                result = {"ok": True, "appointment": appointment.model_dump(mode="json")}
+        except (AppointmentValidationError, AppointmentConflictError) as exc:
+            result = {"ok": False, "error": str(exc)}
+        except Exception:  # noqa: BLE001
+            result = {"ok": False, "error": "Error interno al confirmar el turno."}
+        _log_tool(audit, interaction, "confirm_appointment", args, result)
+        return result
+
+    return [identify_or_create_patient, search_availability, hold_slot, confirm_appointment]
