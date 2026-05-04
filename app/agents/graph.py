@@ -9,7 +9,7 @@ El LLM (ChatGroq) es un singleton cacheado. El checkpointer viene de app.state (
   La compilación de create_react_agent es microsegundos — no es un bottleneck.
   El checkpointer SÍ es global/compartido para que el historial persista entre requests.
 """
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, trim_messages
 from langgraph.prebuilt import create_react_agent
 
 from app.agents.groq_client import build_llm
@@ -42,11 +42,29 @@ def build_agent_graph(tools: list, checkpointer, interaction: InteractionSession
     )
     system_message = SystemMessage(content=f"{SYSTEM_PROMPT}\n\n{backend_state}")
 
+    def prompt_with_trimming(state: dict) -> list:
+        # Extrae los mensajes del historial que trae el checkpointer de la BD
+        messages = state["messages"]
+        
+        # Recorta el historial dejando los últimos N mensajes (ej: 12).
+        # Es inteligente: no rompe los pares de ToolCall/ToolMessage
+        # y se asegura de que el chat resultante empiece con un HumanMessage.
+        trimmed = trim_messages(
+            messages,
+            max_tokens=settings.max_context_messages,
+            token_counter=len,
+            strategy="last",
+            start_on="human",
+            include_system=False,
+            allow_partial=False,
+        )
+        # El LLM recibe: el System prompt fresco + la cola truncada del historial
+        return [system_message] + trimmed
+
     return create_react_agent(
         model=build_llm(),
         tools=tools,
-        # prompt: reemplaza o prepend el system message antes de cada LLM call.
-        prompt=system_message,
+        prompt=prompt_with_trimming,
         checkpointer=checkpointer,
         # En LangGraph: cada "paso" = 1 nodo del grafo (LLM call o tool call son pasos separados).
         # max_agent_iterations * 2 + 1 cubre N ciclos completos LLM→tool más la respuesta final.

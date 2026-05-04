@@ -77,11 +77,27 @@ Tools disponibles:
    - Guarda la ida y vuelta en su tabla `checkpoints`.
 7. El orquestador recibe la respuesta final, la loguea para auditoría en `interaction_logs`, y responde al frontend.
 
-## Siguientes Pasos (Roadmap)
+## Mejoras Recientes (Fase 1 Completada)
 
-### Fase 1.5 - Gestión de Contexto/Token Budget
-- Actualmente el historial crece indefinidamente.
-- Tarea: Configurar `trim_messages` de LangGraph o implementar summarization para evitar agotar la ventana de contexto en conversaciones muy largas.
+### Frontend UI Rediseñado
+- **Tailwind CSS via CDN**: Se reescribió la interfaz usando Tailwind para lograr un diseño "premium" médico con esquema dark mode (Slate/Cyan).
+- **UX Robusta**:
+  - Indicador animado de "escribiendo..." (typing indicator).
+  - Bloqueo de input (`isLoading`) mientras el agente procesa para evitar double-sends.
+  - Spinner SVG en el botón de envío y barra de estado con colores por variante.
+  - Fallbacks `null-safe` (`?.`) en el JS y **Cache-busting** (`?v=3`) en `index.html` para evitar desajustes (`TypeError: Cannot set properties of null`) cuando el navegador cachea archivos estáticos antiguos.
+
+### Búsqueda de Especialidades (Accent-Insensitive)
+- **Problema**: El LLM escribe especialidades correctamente en español (ej. "cardiología") pero en la BD pueden estar sin tildes ("cardiologia"), causando fallos en los `ILIKE` convencionales.
+- **Solución Dual**:
+  1. **Python**: Se usa `unicodedata.normalize("NFD", ...)` en `appointment_service.py` para remover tildes del input del agente.
+  2. **Base de Datos**: Se implementó una migración de Alembic (`0002_unaccent`) que habilita la extensión nativa `unaccent` de Postgres. En SQLAlchemy se wrappea la columna con `func.unaccent(Specialty.name)`, logrando una búsqueda completamente tolerante a acentos.
+
+### Gestión de Contexto y Token Budget (Fase 1.5)
+- **Problema**: El `PostgresSaver` de LangGraph acumula el historial infinitamente. En conversaciones muy largas, enviar todo el historial a Groq termina agotando la "ventana de contexto" del modelo o desperdiciando dinero en tokens.
+- **Solución**: Se implementó una función `prompt_with_trimming` en `graph.py`. Se usa el utility `trim_messages` de LangChain para truncar el historial y conservar únicamente los últimos N mensajes (configurable en `settings.max_context_messages`). El truncado es inteligente: conserva el SystemMessage inyectado y no rompe los pares de ToolCall/ToolMessage.
+
+## Siguientes Pasos (Roadmap)
 
 ### Fase 2 - Canal de Voz "Llamada" (Streaming)
 - El endpoint WebSocket (`/ws/conversations/{conversation_id}`) ya existe pero procesa mensajes bloqueantes.

@@ -1,5 +1,7 @@
+import unicodedata
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -40,7 +42,17 @@ class AppointmentService:
             .limit(limit)
         )
         if specialty_name:
-            statement = statement.where(Specialty.name.ilike(f"%{specialty_name}%"))
+            # Normaliza el input: quita tildes para que "cardiologia" == "cardiología".
+            # func.unaccent() hace lo mismo en el lado de la BD (requiere extensión unaccent).
+            normalized = (
+                unicodedata.normalize("NFD", specialty_name)
+                .encode("ascii", "ignore")
+                .decode("ascii")
+                .strip()
+            )
+            statement = statement.where(
+                func.unaccent(Specialty.name).ilike(f"%{normalized}%")
+            )
         if doctor_id:
             statement = statement.where(Doctor.id == doctor_id)
 
