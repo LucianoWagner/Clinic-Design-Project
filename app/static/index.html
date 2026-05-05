@@ -137,11 +137,29 @@
             </div>
             <div>
               <h1 class="text-base font-semibold text-white leading-tight">Asistente de Turnos</h1>
-              <p class="text-xs text-slate-500">Respondiendo en tiempo real</p>
+              <p class="text-xs text-slate-500" id="headerSubtitle">Respondiendo en tiempo real</p>
+              <!-- Indicador de llamada activa (oculto por defecto) -->
+              <p id="callStatus" class="hidden text-xs text-red-400 flex items-center gap-1.5 mt-0.5">
+                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0"></span>
+                En llamada
+              </p>
             </div>
           </div>
 
-          <div class="flex items-center gap-4">
+          <div class="flex items-center gap-3">
+            <!-- Call Button -->
+            <button id="callBtn"
+              class="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors
+                     text-emerald-400 border-emerald-700/50 bg-emerald-900/20 hover:bg-emerald-900/40"
+              title="Iniciar llamada de voz con el asistente"
+              aria-label="Iniciar llamada">
+              <!-- Phone icon -->
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.14 12 19.79 19.79 0 0 1 1.08 3.4 2 2 0 0 1 3.05 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+              </svg>
+              <span id="callBtnLabel">Llamar</span>
+            </button>
+
             <!-- New Chat Button -->
             <button id="newChatBtn" class="flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 bg-slate-800/50 hover:bg-slate-700 transition-colors" title="Limpiar historial y empezar de nuevo">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -183,6 +201,27 @@
         <!-- Status bar + Composer -->
         <div class="px-4 pb-4 pt-2 flex-shrink-0 bg-slate-950">
           <p id="statusBar" class="text-xs text-slate-500 px-2 pb-2 min-h-[20px]" role="status" aria-live="polite"></p>
+
+          <!-- Panel de llamada (oculto por defecto, visible durante la llamada) -->
+          <div id="callPanel" class="hidden items-center justify-center gap-4 py-3">
+            <!-- Botón push-to-talk -->
+            <button
+              id="speakBtn"
+              type="button"
+              aria-label="Hablar ahora"
+              title="Presá para hablar"
+              class="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold border-2 transition-all duration-150 active:scale-95
+                     text-slate-400 border-slate-600 bg-slate-800 hover:border-slate-500"
+              disabled
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="22"/>
+              </svg>
+              <span id="speakBtnLabel">Esperando…</span>
+            </button>
+          </div>
 
           <form id="chatForm" class="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-2xl px-2 py-2 focus-within:border-brand/50 focus-within:shadow-[0_0_0_3px_rgba(6,182,212,0.1)] transition-all duration-200" autocomplete="off">
 
@@ -231,6 +270,6 @@
       </main>
     </div>
 
-    <script src="/app.js?v=3"></script>
+    <script src="/app.js?v=7"></script>
   </body>
 </html>

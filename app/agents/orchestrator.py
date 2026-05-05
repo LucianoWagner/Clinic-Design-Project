@@ -12,6 +12,7 @@ Flujo por request:
 El historial de la conversación es gestionado por LangGraph (PostgresSaver/MemorySaver).
 AuditService se mantiene para logs de negocio y auditoría (no para historial del LLM).
 """
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 
 from langchain_core.messages import HumanMessage
@@ -58,7 +59,7 @@ class ConversationOrchestrator:
     # Manejo de mensajes
     # ------------------------------------------------------------------
 
-    def handle_message(
+    async def handle_message(
         self, interaction_id: int, message: str, input_mode: str = "text"
     ) -> MessageRead:
         interaction = self.session.get(InteractionSession, interaction_id)
@@ -86,9 +87,9 @@ class ConversationOrchestrator:
                 "Configurá GROQ_API_KEY en .env.",
             )
 
-        return self._handle_with_langgraph(interaction, message)
+        return await self._handle_with_langgraph(interaction, message)
 
-    def _handle_with_langgraph(self, interaction: InteractionSession, message: str) -> MessageRead:
+    async def _handle_with_langgraph(self, interaction: InteractionSession, message: str) -> MessageRead:
         # Tools con closures sobre la sesión DB y la interacción actuales
         tools = build_tools(self.session, interaction)
 
@@ -102,7 +103,7 @@ class ConversationOrchestrator:
         }
 
         try:
-            state = graph.invoke(
+            state = await graph.ainvoke(
                 {"messages": [HumanMessage(content=message)]},
                 config=config,
             )
@@ -114,6 +115,90 @@ class ConversationOrchestrator:
             response = "Hubo un error procesando tu mensaje. Por favor intentá de nuevo."
 
         return self._finish_turn(interaction, response)
+
+    async def stream_message(
+        self,
+        conversation_id: int,
+        message: str,
+        input_mode: str = "voice",
+    ) -> AsyncGenerator[dict, None]:
+        """
+        Async generator que emite eventos del agente para streaming vía WebSocket.
+
+        Protocol de eventos emitidos:
+          {type: "token",      text: str}           ← fragmento de texto del LLM
+          {type: "tool_start", name: str}           ← herramienta iniciada
+          {type: "tool_end",   name: str}           ← herramienta terminada
+          {type: "done",       state: str, full_text: str}
+          {type: "error",      message: str}
+
+        El WS handler solo necesita: async for event in orchestrator.stream_message(...)
+        """
+        interaction = self.session.get(InteractionSession, conversation_id)
+        if not interaction:
+            yield {"type": "error", "message": "Conversación no encontrada."}
+            return
+
+        if input_mode == "voice":
+            interaction.channel = Channel.web_voice.value
+        interaction.status = InteractionStatus.in_progress.value
+        self.audit.log(interaction.id or 0, "message_received", "user", message[:500])
+
+        # Emergencias: emitir y salir sin invocar el LLM
+        if self._is_emergency(message):
+            interaction.current_state = "emergency_redirect"
+            text = (
+                "Por lo que describís, podría tratarse de una urgencia. "
+                "Contactá emergencias o acercate a una guardia."
+            )
+            self._do_finish_turn(interaction, text)
+            yield {"type": "token", "text": text}
+            yield {"type": "done", "state": interaction.current_state, "full_text": text}
+            return
+
+        if not settings.groq_api_key:
+            text = "Groq API key no configurada. Revisá el .env."
+            self._do_finish_turn(interaction, text)
+            yield {"type": "token", "text": text}
+            yield {"type": "done", "state": interaction.current_state, "full_text": text}
+            return
+
+        tools = build_tools(self.session, interaction)
+        graph = build_agent_graph(tools, self.checkpointer, interaction)
+        config = {
+            "configurable": {"thread_id": str(interaction.id)},
+            "recursion_limit": settings.max_agent_iterations * 2 + 1,
+        }
+
+        full_response = ""
+        try:
+            async for event in graph.astream_events(
+                {"messages": [HumanMessage(content=message)]},
+                config=config,
+                version="v2",
+            ):
+                kind = event["event"]
+                if kind == "on_chat_model_stream":
+                    # content es texto de respuesta final; tool_call_chunks tienen content=""
+                    chunk = event["data"]["chunk"].content
+                    if chunk:
+                        full_response += chunk
+                        yield {"type": "token", "text": chunk}
+                elif kind == "on_tool_start":
+                    yield {"type": "tool_start", "name": event.get("name", "tool")}
+                elif kind == "on_tool_end":
+                    yield {"type": "tool_end", "name": event.get("name", "tool")}
+
+        except Exception as exc:  # noqa: BLE001
+            import traceback
+            traceback.print_exc()
+            self.audit.log(interaction.id or 0, "agent_error", "backend", repr(exc)[:500])
+            error_text = "Hubo un error procesando tu mensaje. Intentá de nuevo."
+            full_response = full_response or error_text
+            yield {"type": "error", "message": error_text}
+
+        self._do_finish_turn(interaction, full_response or "Sin respuesta.")
+        yield {"type": "done", "state": interaction.current_state, "full_text": full_response}
 
     # ------------------------------------------------------------------
     # Helpers
@@ -135,6 +220,13 @@ class ConversationOrchestrator:
             state=interaction.current_state,
             actions=actions or [],
         )
+
+    def _do_finish_turn(self, interaction: InteractionSession, response: str) -> None:
+        """Versión void de _finish_turn para el modo streaming (no construye MessageRead)."""
+        interaction.updated_at = datetime.now(UTC).replace(tzinfo=None)
+        self.session.add(interaction)
+        self.audit.log(interaction.id or 0, "message_sent", "assistant", response[:500])
+        self.session.commit()
 
     @staticmethod
     def _is_emergency(message: str) -> bool:

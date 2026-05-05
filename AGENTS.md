@@ -97,15 +97,31 @@ Tools disponibles:
 - **Problema**: El `PostgresSaver` de LangGraph acumula el historial infinitamente. En conversaciones muy largas, enviar todo el historial a Groq termina agotando la "ventana de contexto" del modelo o desperdiciando dinero en tokens.
 - **Solución**: Se implementó una función `prompt_with_trimming` en `graph.py`. Se usa el utility `trim_messages` de LangChain para truncar el historial y conservar únicamente los últimos N mensajes (configurable en `settings.max_context_messages`). El truncado es inteligente: conserva el SystemMessage inyectado y no rompe los pares de ToolCall/ToolMessage.
 
+### Canal de Voz en Tiempo Real (Fase 2 Completada)
+- **Arquitectura Backend**: WebSocket (`/api/ws/conversations/{id}`) + `graph.astream_events(version="v2")`.
+- **Async Checkpointer**: Para que `astream_events` no levante `NotImplementedError`, LangGraph requiere memoria asíncrona. Se migró de `PostgresSaver` síncrono a `AsyncPostgresSaver` inyectado en el lifespan de FastAPI. Esto también obligó a volver asíncronos los endpoints REST (`await graph.ainvoke`).
+- **Patrón clave**: `stream_message()` en `orchestrator.py` es un **async generator** que emite dicts de eventos. El WS handler solo itera sobre él y reenvía cada evento al browser.
+- **Protocolo de eventos** (servidor → cliente):
+  - `{type: "token", text}` — fragmento del LLM (texto de respuesta)
+  - `{type: "tool_start", name}` — herramienta iniciada
+  - `{type: "tool_end", name}` — herramienta terminada
+  - `{type: "done", state, full_text}` — respuesta completa
+  - `{type: "error", message}` — error
+- **Frontend `VoiceCall` (Push-To-Talk)**:
+  - **STT Manual**: Para evitar problemas con ruido de fondo y loops de eco, se implementó un botón "Hablar" (Push-To-Talk). El STT se pausa cuando el bot habla.
+  - **Sentence-level TTS chunking**: los tokens se acumulan en un buffer y se hablan al completar una oración (`.!?`), logrando voz natural.
+  - **Chrome TTS Bugfix**: La API `SpeechSynthesis` en Chrome sufre de recolección de basura agresiva, lo que provoca que el evento `onend` nunca se dispare. Se solucionó guardando una referencia global (`window._ttsUtterances`) y agregando un timeout de seguridad.
+  - **Alucinación de JSON**: Se agregó una restricción dura en el `SYSTEM_PROMPT` para evitar que LLMs veloces como Llama 3 70B intenten escupir argumentos JSON directamente al usuario en vez de usar la API de herramientas.
 ## Siguientes Pasos (Roadmap)
 
-### Fase 2 - Canal de Voz "Llamada" (Streaming)
-- El endpoint WebSocket (`/ws/conversations/{conversation_id}`) ya existe pero procesa mensajes bloqueantes.
-- Tarea: Modificar el frontend para enviar fragmentos de audio o texto en tiempo real (`continuous=true`).
-- Tarea: Modificar el backend para usar `graph.astream()` (o `astream_events`) y devolver fragmentos del LLM a medida que se generan, permitiendo que el TTS del navegador hable más rápido.
+### Fase 3 - Login y Multi-paciente
+- Sistema de autenticación (JWT).
+- Endpoint `GET /api/conversations` para listar historial de chats por usuario.
+- Endpoint `DELETE /api/conversations/{id}` para borrar conversaciones.
 
 ## Convenciones Para Agentes
 - Nunca mezclar llamadas directas a Groq SDK con LangChain. Usar siempre `ChatGroq`.
 - Toda nueva tool debe agregarse en `build_tools()` y ser una función decorada con `@tool`.
 - Nunca pasar la `Session` de SQLModel como parámetro visible para el LLM.
 - Evitar modificar la tabla `checkpoints` a mano; usar los métodos del `PostgresSaver`.
+

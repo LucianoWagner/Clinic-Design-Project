@@ -26,12 +26,12 @@ configure_logging()
 async def lifespan(app: FastAPI):
     """Inicializa y cierra el checkpointer de LangGraph."""
     if settings.database_url.startswith("postgresql"):
-        from langgraph.checkpoint.postgres import PostgresSaver
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
         # Convierte la URL de SQLAlchemy al formato nativo de psycopg
         conn_string = settings.database_url.replace("postgresql+psycopg", "postgresql")
-        with PostgresSaver.from_conn_string(conn_string) as checkpointer:
-            checkpointer.setup()  # Crea tablas de checkpointing si no existen
+        async with AsyncPostgresSaver.from_conn_string(conn_string) as checkpointer:
+            await checkpointer.setup()  # Crea tablas de checkpointing si no existen
             app.state.checkpointer = checkpointer
             yield
     else:

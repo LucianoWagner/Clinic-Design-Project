@@ -7,7 +7,7 @@ from sqlmodel import Session
 
 from app.agents.orchestrator import ConversationOrchestrator
 from app.db.session import get_session
-from app.schemas.conversation import ConversationCreate, ConversationRead, MessageCreate, MessageRead
+from app.schemas.conversation import ConversationCreate, ConversationRead, MessageCreate, MessageRead  # MessageCreate/Read usados en REST
 
 router = APIRouter(tags=["conversations"])
 
@@ -33,13 +33,13 @@ def create_conversation(
 
 
 @router.post("/conversations/{conversation_id}/messages", response_model=MessageRead)
-def post_message(
+async def post_message(
     conversation_id: int,
     payload: MessageCreate,
     session: Session = Depends(get_session),
     checkpointer=Depends(get_checkpointer),
 ) -> MessageRead:
-    return ConversationOrchestrator(session, checkpointer).handle_message(
+    return await ConversationOrchestrator(session, checkpointer).handle_message(
         conversation_id, payload.message, payload.input_mode
     )
 
@@ -47,20 +47,33 @@ def post_message(
 @router.websocket("/ws/conversations/{conversation_id}")
 async def conversation_ws(websocket: WebSocket, conversation_id: int) -> None:
     """
-    Canal WebSocket para conversación en tiempo real.
-    Preparado para streaming en Fase 2 (canal de voz).
-    Actualmente procesa mensajes completos igual que el endpoint REST.
+    Canal WebSocket para streaming en tiempo real (Fase 2 — Canal de Voz).
+
+    Protocolo (servidor → cliente):
+      {type: "token",      text: str}           ← fragmento del LLM
+      {type: "tool_start", name: str}           ← herramienta iniciada
+      {type: "tool_end",   name: str}           ← herramienta terminada
+      {type: "done",       state: str, full_text: str}
+      {type: "error",      message: str}
+
+    Protocolo (cliente → servidor):
+      {type: "user_message", text: str, input_mode: "voice" | "text"}
     """
     checkpointer = websocket.app.state.checkpointer
     await websocket.accept()
     try:
         while True:
             payload = await websocket.receive_json()
-            message = MessageCreate(**payload)
+            text       = payload.get("text", "")
+            input_mode = payload.get("input_mode", "voice")
+
             with next(get_session()) as session:
-                response = ConversationOrchestrator(session, checkpointer).handle_message(
-                    conversation_id, message.message, message.input_mode
-                )
-            await websocket.send_json(response.model_dump(mode="json"))
+                orchestrator = ConversationOrchestrator(session, checkpointer)
+                # stream_message es un async generator: itera y reenvía cada evento al WS
+                async for event in orchestrator.stream_message(
+                    conversation_id, text, input_mode
+                ):
+                    await websocket.send_json(event)
+
     except WebSocketDisconnect:
         return
