@@ -8,7 +8,7 @@ MVP web para gestión de turnos médicos con IA.
 
 El canal principal es una aplicación web con:
 - Chatbox escrito (REST).
-- Preparado para Voz: El frontend usa Web Speech API (STT/TTS del navegador) y el backend tiene un WebSocket configurado y listo para ser adaptado a streaming (Fase 2 pendiente).
+- Voz en tiempo real: el frontend usa Web Speech API solo para STT del navegador y usa ElevenLabs para TTS via backend. El backend expone WebSocket streaming para la llamada.
 
 ## Stack Actualizado
 
@@ -32,6 +32,11 @@ app/
     tools.py           # Factory de funciones @tool con closures (session/interaction).
   core/
     config.py          # Settings (max_agent_iterations, max_context_messages).
+  services/
+    tts_service.py     # Proxy async a ElevenLabs TTS.
+  api/routes/
+    tts.py             # Endpoint POST /api/tts.
+    speech.py          # STT backend placeholder + alias legacy /speech/synthesize.
   models/
     interaction.py     # InteractionSession y Logs (Auditoría).
 ```
@@ -110,7 +115,11 @@ Tools disponibles:
 - **Frontend `VoiceCall` (Push-To-Talk)**:
   - **STT Manual**: Para evitar problemas con ruido de fondo y loops de eco, se implementó un botón "Hablar" (Push-To-Talk). El STT se pausa cuando el bot habla.
   - **Sentence-level TTS chunking**: los tokens se acumulan en un buffer y se hablan al completar una oración (`.!?`), logrando voz natural.
-  - **Chrome TTS Bugfix**: La API `SpeechSynthesis` en Chrome sufre de recolección de basura agresiva, lo que provoca que el evento `onend` nunca se dispare. Se solucionó guardando una referencia global (`window._ttsUtterances`) y agregando un timeout de seguridad.
+  - **ElevenLabs TTS**: Se reemplazo `window.speechSynthesis` por audio MPEG generado en backend con ElevenLabs. El frontend pide audio a `POST /api/tts`, crea Blob URLs y reproduce con `new Audio()` en cola.
+  - **Compatibilidad Legacy**: `POST /api/speech/synthesize` sigue existiendo como alias para no romper clientes viejos, pero el frontend nuevo usa `/api/tts`.
+  - **Config requerida**: `ELEVENLABS_API_KEY` debe vivir en `.env`, nunca hardcodeada en `config.py`. `ELEVENLABS_VOICE_ID` default validado: `EXAVITQu4vr4xnSDxMaL` (Rachel).
+  - **Turn-taking de llamada**: El botón "Hablar" no queda bloqueado durante escucha; en estado listening muestra "Detener" y permite cancelar sin colgar la llamada. `SpeechRecognition` en llamada usa `interimResults=false` porque fue el modo más estable en Chrome para este proyecto.
+  - **Limitación conocida**: La calidad de lo que dice el agente al hablar aún puede necesitar ajuste fino de prompt/respuesta para sonar más natural en voz.
   - **Alucinación de JSON**: Se agregó una restricción dura en el `SYSTEM_PROMPT` para evitar que LLMs veloces como Llama 3 70B intenten escupir argumentos JSON directamente al usuario en vez de usar la API de herramientas.
 ## Siguientes Pasos (Roadmap)
 
@@ -124,4 +133,3 @@ Tools disponibles:
 - Toda nueva tool debe agregarse en `build_tools()` y ser una función decorada con `@tool`.
 - Nunca pasar la `Session` de SQLModel como parámetro visible para el LLM.
 - Evitar modificar la tabla `checkpoints` a mano; usar los métodos del `PostgresSaver`.
-

@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import appointments, conversations, health, speech
+from app.api.routes import appointments, conversations, health, speech, tts
 from app.core.config import settings
 from app.core.logging import configure_logging
 
@@ -56,5 +56,6 @@ app.include_router(health.router, prefix="/api")
 app.include_router(conversations.router, prefix="/api")
 app.include_router(appointments.router, prefix="/api")
 app.include_router(speech.router, prefix="/api")
+app.include_router(tts.router, prefix="/api")
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

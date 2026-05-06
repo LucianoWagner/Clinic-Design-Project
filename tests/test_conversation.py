@@ -1,12 +1,13 @@
 from datetime import UTC, datetime, timedelta
 
 from langgraph.checkpoint.memory import MemorySaver
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.agents.orchestrator import ConversationOrchestrator
 from app.agents.tools import build_tools
 from app.models.appointment import AppointmentSlot
 from app.models.doctor import Doctor, Specialty
+from app.models.interaction import InteractionLog
 
 
 
@@ -87,3 +88,70 @@ def test_cannot_hold_without_patient() -> None:
     # confirm SÍ requiere paciente → falla
     confirm_result = tools["confirm_appointment"].invoke({"explicit_confirmation": True})
     assert confirm_result["ok"] is False
+
+
+def test_catalog_tool_lists_active_specialties_and_doctors() -> None:
+    session = _make_session()
+    cardio = Specialty(name="cardiologia")
+    clinic = Specialty(name="clinica")
+    inactive_specialty = Specialty(name="traumatologia", is_active=False)
+    session.add_all([cardio, clinic, inactive_specialty])
+    session.flush()
+    session.add_all(
+        [
+            Doctor(full_name="Dra. Ana Perez", specialty_id=cardio.id or 0, license_number="MN1"),
+            Doctor(full_name="Dr. Juan Gomez", specialty_id=clinic.id or 0, license_number="MN2"),
+            Doctor(
+                full_name="Dr. Inactivo",
+                specialty_id=clinic.id or 0,
+                license_number="MN3",
+                is_active=False,
+            ),
+            Doctor(
+                full_name="Dra. Oculta",
+                specialty_id=inactive_specialty.id or 0,
+                license_number="MN4",
+            ),
+        ]
+    )
+    session.commit()
+
+    orchestrator = ConversationOrchestrator(session, MemorySaver())
+    interaction = orchestrator.create_session(channel="web_chat")
+    tools = {tool.name: tool for tool in build_tools(session, interaction)}
+
+    result = tools["list_specialties_and_doctors"].invoke({})
+
+    assert result["ok"] is True
+    assert result["specialties"] == [
+        {
+            "specialty_id": cardio.id,
+            "specialty_name": "cardiologia",
+            "doctors": [{"doctor_id": 1, "doctor_name": "Dra. Ana Perez"}],
+        },
+        {
+            "specialty_id": clinic.id,
+            "specialty_name": "clinica",
+            "doctors": [{"doctor_id": 2, "doctor_name": "Dr. Juan Gomez"}],
+        },
+    ]
+
+
+def test_finish_turn_sanitizes_before_logging() -> None:
+    session = _make_session()
+    orchestrator = ConversationOrchestrator(session, MemorySaver())
+    interaction = orchestrator.create_session(channel="web_chat")
+
+    result = orchestrator._finish_turn(
+        interaction,
+        'Respuesta humana. <function=search_availability>{"specialty_name":"x"}</function>',
+    )
+
+    logs = session.exec(
+        select(InteractionLog).where(InteractionLog.interaction_session_id == interaction.id)
+    ).all()
+    sent_logs = [log for log in logs if log.event_type == "message_sent"]
+    sanitized_logs = [log for log in logs if log.event_type == "response_sanitized"]
+    assert result.response == "Respuesta humana."
+    assert sent_logs[-1].message_summary == "Respuesta humana."
+    assert len(sanitized_logs) == 1

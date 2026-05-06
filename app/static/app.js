@@ -6,19 +6,19 @@
 /* ─── DOM References ─────────────────────────────────────────────── */
 const $ = (id) => document.getElementById(id);
 
-const messagesEl      = $("messages");
-const chatForm        = $("chatForm");
-const messageInput    = $("messageInput");
-const statusBar       = $("statusBar");
-const voiceButton     = $("voiceButton");
-const ttsToggle       = $("ttsToggle");
+const messagesEl = $("messages");
+const chatForm = $("chatForm");
+const messageInput = $("messageInput");
+const statusBar = $("statusBar");
+const voiceButton = $("voiceButton");
+const ttsToggle = $("ttsToggle");
 const typingIndicator = $("typingIndicator");
-const sendButton      = $("sendButton");
-const newChatBtn      = $("newChatBtn");
-const callBtn         = $("callBtn");
-const callBtnLabel    = $("callBtnLabel");
-const callStatus      = $("callStatus");
-const headerSubtitle  = $("headerSubtitle");
+const sendButton = $("sendButton");
+const newChatBtn = $("newChatBtn");
+const callBtn = $("callBtn");
+const callBtnLabel = $("callBtnLabel");
+const callStatus = $("callStatus");
+const headerSubtitle = $("headerSubtitle");
 
 const criticalEls = { messagesEl, chatForm, messageInput };
 for (const [name, el] of Object.entries(criticalEls)) {
@@ -27,8 +27,8 @@ for (const [name, el] of Object.entries(criticalEls)) {
 
 /* ─── App State ─────────────────────────────────────────────────── */
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognition    = null;  // STT de un solo turno (modo texto)
-let isLoading      = false;
+let recognition = null;  // STT de un solo turno (modo texto)
+let isLoading = false;
 let conversationId = localStorage.getItem("conversationId");
 
 /* ─── Message Bubbles ────────────────────────────────────────────── */
@@ -40,10 +40,10 @@ function _createBubble(role) {
   );
   if (role === "user") {
     bubble.classList.add("self-end", "bg-cyan-500/10", "border", "border-cyan-500/25",
-                         "text-slate-100", "rounded-br-sm");
+      "text-slate-100", "rounded-br-sm");
   } else {
     bubble.classList.add("self-start", "bg-slate-800", "border", "border-slate-700",
-                         "text-slate-200", "rounded-bl-sm", "border-l-2", "border-l-cyan-500/50");
+      "text-slate-200", "rounded-bl-sm", "border-l-2", "border-l-cyan-500/50");
   }
   return bubble;
 }
@@ -84,9 +84,9 @@ function setStatus(text, variant = "") {
   if (!statusBar) return;
   statusBar.textContent = text;
   statusBar.classList.remove("text-red-400", "text-cyan-400", "text-slate-500");
-  if (variant === "error")     statusBar.classList.add("text-red-400");
+  if (variant === "error") statusBar.classList.add("text-red-400");
   else if (variant === "info") statusBar.classList.add("text-cyan-400");
-  else                         statusBar.classList.add("text-slate-500");
+  else statusBar.classList.add("text-slate-500");
 }
 
 /* ─── Loading State (modo texto) ─────────────────────────────────── */
@@ -103,13 +103,85 @@ function setLoading(loading) {
   }
 }
 
-/* ─── TTS (modo texto, respuesta completa) ───────────────────────── */
+/* ─── TTS Helpers (ElevenLabs proxy + Audio queue) ───────────────── */
+async function fetchTtsAudioUrl(text) {
+  const response = await fetch("/api/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Error en síntesis de voz");
+  }
+
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
+const TextTtsQueue = (() => {
+  let queue = [];
+  let currentAudio = null;
+
+  function speak(text) {
+    if (!ttsToggle?.checked || !text?.trim()) return;
+    stop();
+    _enqueue(text.trim());
+  }
+
+  async function _enqueue(text) {
+    try {
+      const url = await fetchTtsAudioUrl(text);
+      queue.push(url);
+      if (!currentAudio) _playNext();
+    } catch (err) {
+      console.error("[ElevenLabs TTS Error]", err);
+      setStatus(`Voz: ${err.message}`, "error");
+    }
+  }
+
+  function _playNext() {
+    if (queue.length === 0) {
+      currentAudio = null;
+      return;
+    }
+
+    const url = queue.shift();
+    currentAudio = new Audio(url);
+    currentAudio.onended = () => {
+      URL.revokeObjectURL(url);
+      currentAudio = null;
+      _playNext();
+    };
+    currentAudio.onerror = () => {
+      URL.revokeObjectURL(url);
+      currentAudio = null;
+      _playNext();
+    };
+    currentAudio.play().catch((err) => {
+      console.warn("[Audio Play Blocked]", err);
+      URL.revokeObjectURL(url);
+      currentAudio = null;
+      _playNext();
+    });
+  }
+
+  function stop() {
+    if (currentAudio) {
+      currentAudio.pause();
+      if (currentAudio.src) URL.revokeObjectURL(currentAudio.src);
+      currentAudio = null;
+    }
+    queue.forEach((url) => URL.revokeObjectURL(url));
+    queue = [];
+  }
+
+  return { speak, stop };
+})();
+
 function speak(text) {
-  if (!ttsToggle?.checked || !window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = "es-AR";
-  window.speechSynthesis.speak(u);
+  TextTtsQueue.speak(text);
 }
 
 /* ─── API Helpers ────────────────────────────────────────────────── */
@@ -140,7 +212,7 @@ async function sendMessage(text, inputMode = "text") {
   setStatus("El asistente está procesando tu consulta…", "info");
 
   try {
-    const id  = await ensureConversation();
+    const id = await ensureConversation();
     const res = await fetch(`/api/conversations/${id}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -189,9 +261,9 @@ voiceButton?.addEventListener("click", () => {
   if (recognition) { recognition.stop(); return; }
 
   recognition = new SpeechRecognition();
-  recognition.lang           = "es-AR";
+  recognition.lang = "es-AR";
   recognition.interimResults = false;
-  recognition.continuous     = false;
+  recognition.continuous = false;
 
   recognition.onstart = () => {
     voiceButton.classList.add("recording");
@@ -205,9 +277,9 @@ voiceButton?.addEventListener("click", () => {
   };
   recognition.onerror = (event) => {
     const msgs = {
-      "no-speech":   "No detecté voz. Intentá hablar más cerca del micrófono.",
+      "no-speech": "No detecté voz. Intentá hablar más cerca del micrófono.",
       "not-allowed": "El micrófono fue bloqueado. Permitilo en la configuración del navegador.",
-      "network":     "Error de red durante el reconocimiento de voz.",
+      "network": "Error de red durante el reconocimiento de voz.",
     };
     setStatus(msgs[event.error] ?? "Error al procesar el audio.", "error");
   };
@@ -237,37 +309,38 @@ newChatBtn?.addEventListener("click", () => {
    =================================================================== */
 const VoiceCall = (() => {
   /* ── Private state ─────────────────────────────────────────────── */
-  let ws           = null;
-  let active       = false;
-  let botSpeaking  = false;  // true mientras el TTS habla → speakBtn bloqueado
-  let listening    = false;  // true mientras el STT está activo
+  let ws = null;
+  let active = false;
+  let botSpeaking = false;  // true mientras el TTS habla → speakBtn bloqueado
+  let listening = false;  // true mientras el STT está activo
   let speechBuffer = "";     // buffer de tokens para sentence chunking
   let streamBubble = null;   // burbuja DOM que se llena con tokens del stream
-  let callRecog    = null;   // instancia SpeechRecognition
+  let callRecog = null;   // instancia SpeechRecognition
+  let awaitingBotResponse = false;
 
   /* DOM extra para el panel de llamada */
-  const chatFormEl  = $("chatForm");
+  const chatFormEl = $("chatForm");
   const callPanelEl = $("callPanel");
-  const speakBtnEl  = $("speakBtn");
-  const speakLblEl  = $("speakBtnLabel");
+  const speakBtnEl = $("speakBtn");
+  const speakLblEl = $("speakBtnLabel");
 
   /* Etiquetas amigables para tool events */
   const TOOL_LABELS = {
-    search_availability:        "Buscando disponibilidad…",
+    search_availability: "Buscando disponibilidad…",
     identify_or_create_patient: "Registrando paciente…",
-    hold_slot:                  "Reservando turno…",
-    confirm_appointment:        "Confirmando turno…",
+    hold_slot: "Reservando turno…",
+    confirm_appointment: "Confirmando turno…",
   };
 
   /* ── speakBtn state machine ────────────────────────────────────── */
   // Estados: "waiting" | "ready" | "listening"
   function _setSpeakState(state) {
     if (!speakBtnEl || !speakLblEl) return;
-    speakBtnEl.disabled = (state !== "ready");
+    speakBtnEl.disabled = (state === "waiting");
 
     const styles = {
-      waiting:   "text-slate-500 border-slate-700 bg-slate-900",
-      ready:     "text-emerald-400 border-emerald-600 bg-emerald-900/30 hover:bg-emerald-900/50 cursor-pointer",
+      waiting: "text-slate-500 border-slate-700 bg-slate-900",
+      ready: "text-emerald-400 border-emerald-600 bg-emerald-900/30 hover:bg-emerald-900/50 cursor-pointer",
       listening: "text-red-400 border-red-600 bg-red-900/30 animate-pulse",
     };
     // Reset classes
@@ -277,9 +350,9 @@ const VoiceCall = (() => {
     speakBtnEl.className += " " + styles[state];
 
     const labels = {
-      waiting:   "Esperando…",
-      ready:     "Hablar",
-      listening: "Escuchando…",
+      waiting: "Esperando…",
+      ready: "Hablar",
+      listening: "Detener",
     };
     speakLblEl.textContent = labels[state];
     speakBtnEl.setAttribute("aria-label", state === "listening" ? "Detener" : "Hablar ahora");
@@ -334,9 +407,9 @@ const VoiceCall = (() => {
     if (!SpeechRecognition || !active || botSpeaking || listening) return;
 
     callRecog = new SpeechRecognition();
-    callRecog.lang           = "es-AR";
+    callRecog.lang = "es-AR";
     callRecog.interimResults = false;
-    callRecog.continuous     = false;
+    callRecog.continuous = false;
 
     callRecog.onresult = (event) => {
       const transcript = event.results[0][0].transcript.trim();
@@ -345,38 +418,51 @@ const VoiceCall = (() => {
 
     callRecog.onerror = (e) => {
       listening = false;
-      _setSpeakState("ready");
       if (e.error !== "no-speech" && e.error !== "aborted") {
         setStatus(`Micrófono: ${e.error}`, "error");
+        _setSpeakState("ready");
+        return;
       }
+      _setSpeakState("ready");
+      setStatus("No detecté voz. Presioná Hablar e intentá de nuevo.", "info");
     };
 
     callRecog.onend = () => {
       callRecog = null;
       listening = false;
       // Solo volver a "ready" si no estamos esperando respuesta del bot
-      if (active && !botSpeaking && !streamBubble) {
+      if (active && !botSpeaking && !streamBubble && !awaitingBotResponse) {
         _setSpeakState("ready");
         setStatus("Tu turno — presioná Hablar.", "info");
       }
     };
 
-    callRecog.start();
-    listening = true;
-    _setSpeakState("listening");
-    setStatus("🎙 Escuchando… hablá ahora.", "info");
+    try {
+      callRecog.start();
+      listening = true;
+      _setSpeakState("listening");
+      setStatus("🎙 Escuchando… hablá ahora.", "info");
+    } catch (err) {
+      callRecog = null;
+      listening = false;
+      _setSpeakState("ready");
+      setStatus("No se pudo iniciar el micrófono. Revisá permisos del navegador.", "error");
+      console.error("[SpeechRecognition start error]", err);
+    }
   }
 
   function _stopListening() {
     if (callRecog) {
-      callRecog.onend = null;
       callRecog.stop();
-      callRecog = null;
     }
     listening = false;
   }
 
-  /* ── TTS con sentence chunking ────────────────────────────────── */
+  /* ── TTS con ElevenLabs (Cola de Audio) ────────────────────────── */
+  let audioQueue = [];
+  let isPlayingAudio = false;
+  let currentAudio = null;
+
   function _processToken(token) {
     speechBuffer += token;
     const sentenceRegex = /[^.!?\n]+[.!?\n]+/g;
@@ -385,47 +471,72 @@ const VoiceCall = (() => {
   }
 
   function _flushBuffer() {
-    if (speechBuffer.trim()) { _speakSentence(speechBuffer.trim()); speechBuffer = ""; }
+    if (speechBuffer.trim()) {
+      _speakSentence(speechBuffer.trim());
+      speechBuffer = "";
+    }
   }
 
-  // Mantener referencia global para evitar que el garbage collector mate el utterance antes del onend (Chrome bug)
-  window._ttsUtterances = window._ttsUtterances || [];
+  async function _speakSentence(text) {
+    if (!text) return;
 
-  function _speakSentence(text) {
-    if (!text || !window.speechSynthesis) return;
+    // Bloquear UI mientras el bot "habla" o prepara el audio
     botSpeaking = true;
     _stopListening();
     _setSpeakState("waiting");
     setStatus("💬 Asistente hablando…", "info");
 
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang  = "es-AR";
-    u.rate  = 1.05;
-    
-    window._ttsUtterances.push(u);
+    try {
+      const url = await fetchTtsAudioUrl(text);
+      audioQueue.push(url);
 
-    u.onend = () => {
-      window._ttsUtterances = window._ttsUtterances.filter(utt => utt !== u);
-      _onBotSentenceDone();
-    };
-    
-    // Timeout de seguridad en caso de que el TTS se congele (ej. texto impronunciable)
-    // Asumimos que nadie habla más de 100ms por caracter + 3 segundos de buffer
-    const maxDuration = (text.length * 100) + 3000;
-    setTimeout(() => {
-      if (window._ttsUtterances.includes(u)) {
-        console.warn("[TTS] onend timeout trigger");
-        window._ttsUtterances = window._ttsUtterances.filter(utt => utt !== u);
-        _onBotSentenceDone();
+      if (!isPlayingAudio) {
+        _playNextInQueue();
       }
-    }, maxDuration);
-
-    window.speechSynthesis.speak(u);
+    } catch (err) {
+      console.error("[ElevenLabs TTS Error]", err);
+      // Si falla ElevenLabs, liberamos el turno para no trabar la UI
+      _checkIfFinished();
+    }
   }
 
-  function _onBotSentenceDone() {
-    // Solo habilitar el turno del usuario si la cola de TTS está vacía
-    if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
+  function _playNextInQueue() {
+    if (audioQueue.length === 0) {
+      isPlayingAudio = false;
+      _checkIfFinished();
+      return;
+    }
+
+    isPlayingAudio = true;
+    const url = audioQueue.shift();
+    currentAudio = new Audio(url);
+
+    currentAudio.onended = () => {
+      URL.revokeObjectURL(url);
+      currentAudio = null;
+      _playNextInQueue();
+    };
+
+    currentAudio.onerror = () => {
+      console.error("[Audio Playback Error]");
+      URL.revokeObjectURL(url);
+      currentAudio = null;
+      _playNextInQueue();
+    };
+
+    currentAudio.play().catch(e => {
+      console.warn("[Audio Play Blocked] Necesita interacción previa:", e);
+      URL.revokeObjectURL(url);
+      currentAudio = null;
+      _playNextInQueue();
+    });
+  }
+
+  function _checkIfFinished() {
+    // El turno termina si:
+    // 1. No hay audios reproduciéndose ni en cola
+    // 2. El backend ya terminó de mandar tokens (streamBubble == null)
+    if (!isPlayingAudio && audioQueue.length === 0 && !streamBubble) {
       botSpeaking = false;
       if (active) {
         _setSpeakState("ready");
@@ -463,21 +574,17 @@ const VoiceCall = (() => {
         hideTyping();
         _flushBuffer();
         streamBubble = null;
-        // _onBotSentenceDone habilitará speakBtn cuando el TTS termine
-        if (!window.speechSynthesis.speaking) {
-          botSpeaking = false;
-          _setSpeakState("ready");
-          setStatus("Tu turno — presioná Hablar.", "info");
-        }
+        awaitingBotResponse = false;
+        _checkIfFinished();
         break;
 
       case "error":
         hideTyping();
         streamBubble = null;
+        awaitingBotResponse = false;
         addMessage("assistant", data.message || "Error desconocido.");
         setStatus(`⚠ ${data.message}`, "error");
-        botSpeaking = false;
-        _setSpeakState("ready");
+        _checkIfFinished();
         break;
     }
   }
@@ -489,6 +596,7 @@ const VoiceCall = (() => {
     showTyping();
     setStatus("Procesando…", "info");
     streamBubble = null;
+    awaitingBotResponse = true;
     _setSpeakState("waiting"); // Deshabilitar speakBtn hasta que responda el bot
     ws.send(JSON.stringify({ type: "user_message", text, input_mode: "voice" }));
   }
@@ -523,8 +631,16 @@ const VoiceCall = (() => {
   function stop() {
     active = false;
     _stopListening();
-    window.speechSynthesis?.cancel();
-    botSpeaking  = false;
+    if (currentAudio) {
+      currentAudio.pause();
+      if (currentAudio.src) URL.revokeObjectURL(currentAudio.src);
+      currentAudio = null;
+    }
+    audioQueue.forEach((url) => URL.revokeObjectURL(url));
+    audioQueue = [];
+    isPlayingAudio = false;
+    botSpeaking = false;
+    awaitingBotResponse = false;
     speechBuffer = "";
     streamBubble = null;
 

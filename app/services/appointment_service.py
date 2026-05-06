@@ -26,6 +26,33 @@ class AppointmentService:
     def __init__(self, session: Session):
         self.session = session
 
+    def list_specialties_and_doctors(self) -> list[dict]:
+        statement = (
+            select(Specialty, Doctor)
+            .join(Doctor, Doctor.specialty_id == Specialty.id)
+            .where(Specialty.is_active == True)  # noqa: E712
+            .where(Doctor.is_active == True)  # noqa: E712
+            .order_by(Specialty.name, Doctor.full_name)
+        )
+        rows = self.session.exec(statement).all()
+
+        grouped: dict[int, dict] = {}
+        for specialty, doctor in rows:
+            specialty_id = specialty.id or 0
+            if specialty_id not in grouped:
+                grouped[specialty_id] = {
+                    "specialty_id": specialty_id,
+                    "specialty_name": specialty.name,
+                    "doctors": [],
+                }
+            grouped[specialty_id]["doctors"].append(
+                {
+                    "doctor_id": doctor.id or 0,
+                    "doctor_name": doctor.full_name,
+                }
+            )
+        return list(grouped.values())
+
     def search_availability(
         self, specialty_name: str | None = None, doctor_id: int | None = None, limit: int = 5
     ) -> list[SlotRead]:
@@ -50,9 +77,10 @@ class AppointmentService:
                 .decode("ascii")
                 .strip()
             )
-            statement = statement.where(
-                func.unaccent(Specialty.name).ilike(f"%{normalized}%")
-            )
+            if self.session.get_bind().dialect.name == "sqlite":
+                statement = statement.where(Specialty.name.ilike(f"%{normalized}%"))
+            else:
+                statement = statement.where(func.unaccent(Specialty.name).ilike(f"%{normalized}%"))
         if doctor_id:
             statement = statement.where(Doctor.id == doctor_id)
 

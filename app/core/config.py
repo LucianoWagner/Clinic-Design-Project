@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # Ventana de mensajes de historial para reconstruir contexto (fallback sin checkpointer)
     max_context_messages: int = 12
     cors_origins: list[str] = ["http://localhost:8000", "http://127.0.0.1:8000"]
+    
+    # Configuración TTS (ElevenLabs)
+    elevenlabs_api_key: str | None = None
+    elevenlabs_voice_id: str = "pNInz6obpgDQGcFmaJcg"  # Voice 'Fin' por defecto
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

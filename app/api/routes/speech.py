@@ -1,15 +1,13 @@
-from fastapi import APIRouter, File, HTTPException, UploadFile
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Response, File, UploadFile
+from pydantic import BaseModel
+
+from app.services.tts_service import SynthesisRequest, synthesize_speech
 
 router = APIRouter(tags=["speech"])
 
 
 class TranscriptionRead(BaseModel):
     text: str
-
-
-class SynthesisRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=2000)
 
 
 @router.post("/speech/transcribe", response_model=TranscriptionRead)
@@ -22,9 +20,6 @@ async def transcribe(audio_file: UploadFile = File(...)) -> TranscriptionRead:
 
 
 @router.post("/speech/synthesize")
-def synthesize(payload: SynthesisRequest) -> None:
-    _ = payload
-    raise HTTPException(
-        status_code=501,
-        detail="Fallback TTS backend no configurado. Usá SpeechSynthesis del navegador.",
-    )
+async def synthesize(payload: SynthesisRequest) -> Response:
+    audio = await synthesize_speech(payload.text)
+    return Response(content=audio, media_type="audio/mpeg")

@@ -19,6 +19,7 @@ from langchain_core.messages import HumanMessage
 from sqlmodel import Session
 
 from app.agents.graph import build_agent_graph
+from app.agents.response_sanitizer import StreamingFunctionCallSanitizer, sanitize_agent_response
 from app.agents.tools import build_tools
 from app.core.config import settings
 from app.models.enums import Channel, InteractionStatus
@@ -171,6 +172,7 @@ class ConversationOrchestrator:
         }
 
         full_response = ""
+        stream_sanitizer = StreamingFunctionCallSanitizer()
         try:
             async for event in graph.astream_events(
                 {"messages": [HumanMessage(content=message)]},
@@ -183,11 +185,16 @@ class ConversationOrchestrator:
                     chunk = event["data"]["chunk"].content
                     if chunk:
                         full_response += chunk
-                        yield {"type": "token", "text": chunk}
+                        safe_chunk = stream_sanitizer.push(chunk)
+                        if safe_chunk:
+                            yield {"type": "token", "text": safe_chunk}
                 elif kind == "on_tool_start":
                     yield {"type": "tool_start", "name": event.get("name", "tool")}
                 elif kind == "on_tool_end":
                     yield {"type": "tool_end", "name": event.get("name", "tool")}
+            safe_tail = stream_sanitizer.flush()
+            if safe_tail:
+                yield {"type": "token", "text": safe_tail}
 
         except Exception as exc:  # noqa: BLE001
             import traceback
@@ -197,8 +204,8 @@ class ConversationOrchestrator:
             full_response = full_response or error_text
             yield {"type": "error", "message": error_text}
 
-        self._do_finish_turn(interaction, full_response or "Sin respuesta.")
-        yield {"type": "done", "state": interaction.current_state, "full_text": full_response}
+        final_response = self._do_finish_turn(interaction, full_response or "Sin respuesta.")
+        yield {"type": "done", "state": interaction.current_state, "full_text": final_response}
 
     # ------------------------------------------------------------------
     # Helpers
@@ -210,6 +217,7 @@ class ConversationOrchestrator:
         response: str,
         actions: list[AgentAction] | None = None,
     ) -> MessageRead:
+        response = self._sanitize_response(interaction, response)
         interaction.updated_at = datetime.now(UTC).replace(tzinfo=None)
         self.session.add(interaction)
         self.audit.log(interaction.id or 0, "message_sent", "assistant", response[:500])
@@ -221,12 +229,28 @@ class ConversationOrchestrator:
             actions=actions or [],
         )
 
-    def _do_finish_turn(self, interaction: InteractionSession, response: str) -> None:
+    def _do_finish_turn(self, interaction: InteractionSession, response: str) -> str:
         """Versión void de _finish_turn para el modo streaming (no construye MessageRead)."""
+        response = self._sanitize_response(interaction, response)
         interaction.updated_at = datetime.now(UTC).replace(tzinfo=None)
         self.session.add(interaction)
         self.audit.log(interaction.id or 0, "message_sent", "assistant", response[:500])
         self.session.commit()
+        return response
+
+    def _sanitize_response(self, interaction: InteractionSession, response: str) -> str:
+        sanitized = sanitize_agent_response(response)
+        if sanitized.was_sanitized:
+            self.audit.log(
+                interaction.id or 0,
+                "response_sanitized",
+                "backend",
+                "Se removio sintaxis interna de tool calling de la respuesta del agente.",
+            )
+        return (
+            sanitized.text
+            or "Puedo ayudarte a buscar especialidades, médicos o turnos disponibles."
+        )
 
     @staticmethod
     def _is_emergency(message: str) -> bool:

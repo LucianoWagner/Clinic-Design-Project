@@ -57,6 +57,22 @@ def build_tools(session: Session, interaction: InteractionSession) -> list:
     audit = AuditService(session)
 
     @tool
+    def list_specialties_and_doctors() -> dict:
+        """
+        Lista especialidades y medicos activos del consultorio.
+        Usar cuando el usuario pregunte que especialidades hay, que medicos atienden,
+        o que medicos hay para cada especialidad. No busca horarios ni disponibilidad.
+        """
+        args: dict[str, Any] = {}
+        try:
+            catalog = appointments.list_specialties_and_doctors()
+            result: dict[str, Any] = {"ok": True, "specialties": catalog}
+        except Exception:  # noqa: BLE001
+            result = {"ok": False, "error": "Error interno al listar médicos y especialidades."}
+        _log_tool(audit, interaction, "list_specialties_and_doctors", args, result)
+        return result
+
+    @tool
     def identify_or_create_patient(
         full_name: str,
         document_number: str,
@@ -172,4 +188,10 @@ def build_tools(session: Session, interaction: InteractionSession) -> list:
         _log_tool(audit, interaction, "confirm_appointment", args, result)
         return result
 
-    return [identify_or_create_patient, search_availability, hold_slot, confirm_appointment]
+    return [
+        list_specialties_and_doctors,
+        identify_or_create_patient,
+        search_availability,
+        hold_slot,
+        confirm_appointment,
+    ]
