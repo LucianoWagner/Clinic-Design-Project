@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # Ventana de mensajes de historial para reconstruir contexto (fallback sin checkpointer)
     max_context_messages: int = 12
     cors_origins: list[str] = ["http://localhost:8000", "http://127.0.0.1:8000"]
+    jwt_secret_key: str = "dev-change-me"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 480
     
     # Configuración TTS (ElevenLabs)
     elevenlabs_api_key: str | None = None

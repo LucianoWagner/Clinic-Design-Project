@@ -24,6 +24,7 @@ from app.agents.tools import build_tools
 from app.core.config import settings
 from app.models.enums import Channel, InteractionStatus
 from app.models.interaction import InteractionSession
+from app.models.user import User
 from app.schemas.conversation import AgentAction, MessageRead
 from app.services.appointment_service import AppointmentValidationError
 from app.services.audit_service import AuditService
@@ -33,18 +34,21 @@ EMERGENCY_TERMS = ("infarto", "no puedo respirar", "convuls", "desmayo", "hemorr
 
 
 class ConversationOrchestrator:
-    def __init__(self, session: Session, checkpointer) -> None:
+    def __init__(self, session: Session, checkpointer, current_user: User | None = None) -> None:
         self.session = session
         self.checkpointer = checkpointer
+        self.current_user = current_user
         self.audit = AuditService(session)
 
     # ------------------------------------------------------------------
     # Gestión de sesión
     # ------------------------------------------------------------------
 
-    def create_session(self, channel: Channel | str) -> InteractionSession:
+    def create_session(self, channel: Channel | str, user_id: int | None = None) -> InteractionSession:
+        resolved_user_id = user_id or self.current_user_id
         channel_value = channel.value if isinstance(channel, Channel) else channel
         interaction = InteractionSession(
+            user_id=resolved_user_id,
             channel=channel_value,
             status=InteractionStatus.in_progress.value,
             current_state="intent_detection",
@@ -92,10 +96,11 @@ class ConversationOrchestrator:
 
     async def _handle_with_langgraph(self, interaction: InteractionSession, message: str) -> MessageRead:
         # Tools con closures sobre la sesión DB y la interacción actuales
+        user = self._get_interaction_user(interaction)
         tools = build_tools(self.session, interaction)
 
         # El grafo se compila por request (microsegundos); el checkpointer es compartido
-        graph = build_agent_graph(tools, self.checkpointer, interaction)
+        graph = build_agent_graph(tools, self.checkpointer, interaction, user)
 
         # thread_id identifica la conversación en el checkpoint de LangGraph
         config = {
@@ -164,8 +169,9 @@ class ConversationOrchestrator:
             yield {"type": "done", "state": interaction.current_state, "full_text": text}
             return
 
+        user = self._get_interaction_user(interaction)
         tools = build_tools(self.session, interaction)
-        graph = build_agent_graph(tools, self.checkpointer, interaction)
+        graph = build_agent_graph(tools, self.checkpointer, interaction, user)
         config = {
             "configurable": {"thread_id": str(interaction.id)},
             "recursion_limit": settings.max_agent_iterations * 2 + 1,
@@ -251,6 +257,20 @@ class ConversationOrchestrator:
             sanitized.text
             or "Puedo ayudarte a buscar especialidades, médicos o turnos disponibles."
         )
+
+    @property
+    def current_user_id(self) -> int:
+        if not self.current_user or not self.current_user.id:
+            raise AppointmentValidationError("Falta usuario autenticado.")
+        return self.current_user.id
+
+    def _get_interaction_user(self, interaction: InteractionSession) -> User:
+        if self.current_user and self.current_user.id == interaction.user_id:
+            return self.current_user
+        user = self.session.get(User, interaction.user_id)
+        if not user:
+            raise AppointmentValidationError("La conversación no tiene usuario válido.")
+        return user
 
     @staticmethod
     def _is_emergency(message: str) -> bool:

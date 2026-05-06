@@ -8,16 +8,15 @@ def utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-class Patient(SQLModel, table=True):
-    __tablename__ = "patients"
+class User(SQLModel, table=True):
+    __tablename__ = "users"
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(index=True, unique=True, max_length=160)
     full_name: str = Field(index=True, min_length=2, max_length=160)
-    document_type: str = Field(default="DNI", max_length=20)
-    document_number: str = Field(index=True, max_length=40)
+    document_number: str = Field(index=True, unique=True, max_length=40)
     phone: str = Field(index=True, max_length=40)
-    email: Optional[str] = Field(default=None, max_length=160)
-    insurance_name: Optional[str] = Field(default=None, max_length=120)
-    insurance_member_id: Optional[str] = Field(default=None, max_length=80)
+    password_hash: str = Field(max_length=255)
+    is_active: bool = Field(default=True, index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

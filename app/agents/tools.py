@@ -15,7 +15,6 @@ from app.models.interaction import InteractionSession
 from app.schemas.appointment import (
     ConfirmAppointmentToolInput,
     HoldSlotToolInput,
-    IdentifyPatientToolInput,
     SearchAvailabilityToolInput,
 )
 from app.services.appointment_service import (
@@ -70,39 +69,6 @@ def build_tools(session: Session, interaction: InteractionSession) -> list:
         except Exception:  # noqa: BLE001
             result = {"ok": False, "error": "Error interno al listar médicos y especialidades."}
         _log_tool(audit, interaction, "list_specialties_and_doctors", args, result)
-        return result
-
-    @tool
-    def identify_or_create_patient(
-        full_name: str,
-        document_number: str,
-        phone: str,
-        insurance_name: str | None = None,
-    ) -> dict:
-        """
-        Identifica o crea un paciente en el sistema.
-        Usar solo cuando el usuario ya proporcionó nombre completo, DNI y teléfono.
-        Devuelve patient_id confirmado en la base de datos.
-        """
-        args = {"full_name": full_name, "document_number": document_number, "phone": phone, "insurance_name": insurance_name}
-        try:
-            payload = IdentifyPatientToolInput(**args)
-            patient = appointments.identify_or_create_patient(payload)
-            interaction.patient_id = patient.id
-            interaction.collected_data = {
-                **(interaction.collected_data or {}),
-                "full_name": patient.full_name,
-                "document_number": patient.document_number,
-                "phone": patient.phone,
-                "insurance_name": patient.insurance_name,
-            }
-            session.add(interaction)
-            result: dict[str, Any] = {"ok": True, "patient_id": patient.id, "full_name": patient.full_name}
-        except (AppointmentValidationError, AppointmentConflictError) as exc:
-            result = {"ok": False, "error": str(exc)}
-        except Exception as exc:  # noqa: BLE001
-            result = {"ok": False, "error": "Error interno al identificar paciente."}
-        _log_tool(audit, interaction, "identify_or_create_patient", args, result)
         return result
 
     @tool
@@ -190,7 +156,6 @@ def build_tools(session: Session, interaction: InteractionSession) -> list:
 
     return [
         list_specialties_and_doctors,
-        identify_or_create_patient,
         search_availability,
         hold_slot,
         confirm_appointment,

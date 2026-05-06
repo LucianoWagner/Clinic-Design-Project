@@ -10,8 +10,8 @@ from app.models.appointment import Appointment, AppointmentSlot
 from app.models.doctor import Doctor, Specialty
 from app.models.enums import SlotStatus
 from app.models.interaction import InteractionSession
-from app.models.patient import Patient
-from app.schemas.appointment import AppointmentRead, PatientInput, SlotRead
+from app.models.user import User
+from app.schemas.appointment import AppointmentRead, SlotRead
 
 
 class AppointmentConflictError(Exception):
@@ -97,26 +97,6 @@ class AppointmentService:
             for slot, doctor, specialty in rows
         ]
 
-    def identify_or_create_patient(self, data: PatientInput) -> Patient:
-        patient = self.session.exec(
-            select(Patient).where(Patient.document_number == data.document_number)
-        ).first()
-        if patient:
-            patient.full_name = data.full_name
-            patient.phone = data.phone
-            patient.insurance_name = data.insurance_name
-            self.session.add(patient)
-            return patient
-        patient = Patient(
-            full_name=data.full_name,
-            document_number=data.document_number,
-            phone=data.phone,
-            insurance_name=data.insurance_name,
-        )
-        self.session.add(patient)
-        self.session.flush()
-        return patient
-
     def hold_slot(self, slot_id: int, interaction_session_id: int) -> AppointmentSlot:
         slot = self.session.get(AppointmentSlot, slot_id)
         if not slot:
@@ -147,8 +127,8 @@ class AppointmentService:
             raise AppointmentValidationError("Falta confirmación explícita.")
 
         interaction = self.session.get(InteractionSession, interaction_session_id)
-        if not interaction or not interaction.patient_id:
-            raise AppointmentValidationError("Faltan datos del paciente.")
+        if not interaction or not interaction.user_id or not self.session.get(User, interaction.user_id):
+            raise AppointmentValidationError("Falta usuario autenticado.")
 
         slot = self.session.get(AppointmentSlot, slot_id)
         now = datetime.now(UTC).replace(tzinfo=None)
@@ -163,7 +143,7 @@ class AppointmentService:
             raise AppointmentConflictError("La reserva temporal venció o no pertenece a esta sesión.")
 
         appointment = Appointment(
-            patient_id=interaction.patient_id,
+            user_id=interaction.user_id,
             doctor_id=slot.doctor_id,
             slot_id=slot.id or 0,
             interaction_session_id=interaction_session_id,
@@ -179,7 +159,7 @@ class AppointmentService:
 
         return AppointmentRead(
             id=appointment.id or 0,
-            patient_id=appointment.patient_id,
+            user_id=appointment.user_id,
             doctor_id=appointment.doctor_id,
             slot_id=appointment.slot_id,
             starts_at=slot.starts_at,

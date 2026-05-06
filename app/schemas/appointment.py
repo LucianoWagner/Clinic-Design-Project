@@ -38,18 +38,11 @@ class ConfirmAppointmentRequest(BaseModel):
 
 class AppointmentRead(BaseModel):
     id: int
-    patient_id: int
+    user_id: int
     doctor_id: int
     slot_id: int
     starts_at: datetime
     confirmation_code: str
-
-
-class PatientInput(BaseModel):
-    full_name: str = Field(min_length=2, max_length=160)
-    document_number: str = Field(min_length=4, max_length=40)
-    phone: str = Field(min_length=6, max_length=40)
-    insurance_name: Optional[str] = Field(default=None, max_length=120)
 
 
 class SearchAvailabilityToolInput(BaseModel):
@@ -65,7 +58,3 @@ class HoldSlotToolInput(BaseModel):
 class ConfirmAppointmentToolInput(BaseModel):
     slot_id: Optional[int] = None
     explicit_confirmation: bool
-
-
-class IdentifyPatientToolInput(PatientInput):
-    pass

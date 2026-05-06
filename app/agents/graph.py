@@ -16,9 +16,10 @@ from app.agents.groq_client import build_llm
 from app.agents.prompt import SYSTEM_PROMPT
 from app.core.config import settings
 from app.models.interaction import InteractionSession
+from app.models.user import User
 
 
-def build_agent_graph(tools: list, checkpointer, interaction: InteractionSession):
+def build_agent_graph(tools: list, checkpointer, interaction: InteractionSession, user: User):
     """
     Compila y devuelve un agente ReAct listo para invocar.
 
@@ -31,14 +32,18 @@ def build_agent_graph(tools: list, checkpointer, interaction: InteractionSession
         CompiledStateGraph listo para .invoke() o .astream()
     """
     # El state_modifier se ejecuta antes de cada llamada al LLM dentro del loop ReAct.
-    # Inyecta el estado backend fresco (patient_id, current_state, pending_slot_id)
+    # Inyecta el estado backend fresco (user_id, current_state, pending_slot_id)
     # sin que esto quede guardado en el checkpoint como un mensaje más.
     backend_state = (
         f"Estado backend actual: session_id={interaction.id}, "
         f"state={interaction.current_state}, "
-        f"patient_id={interaction.patient_id}, "
+        f"user_id={interaction.user_id}, "
+        f"usuario_nombre={user.full_name}, "
+        f"usuario_dni={user.document_number}, "
+        f"usuario_telefono={user.phone}, "
         f"pending_slot_id={interaction.pending_slot_id}. "
-        "No le pidas al usuario llenar un formulario; conversa naturalmente."
+        "No le pidas al usuario nombre, DNI ni teléfono para reservar; ya están registrados. "
+        "Conversa naturalmente."
     )
     system_message = SystemMessage(content=f"{SYSTEM_PROMPT}\n\n{backend_state}")
 

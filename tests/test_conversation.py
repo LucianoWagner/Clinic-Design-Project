@@ -8,7 +8,7 @@ from app.agents.tools import build_tools
 from app.models.appointment import AppointmentSlot
 from app.models.doctor import Doctor, Specialty
 from app.models.interaction import InteractionLog
-
+from app.models.user import User
 
 
 def _make_session() -> Session:
@@ -17,8 +17,21 @@ def _make_session() -> Session:
     return Session(engine)
 
 
-def _seed(session: Session) -> None:
-    """Crea datos mínimos para tests: especialidad, médico y slot futuro."""
+def _create_user(session: Session, email: str = "user@example.com") -> User:
+    user = User(
+        email=email,
+        full_name="Usuario Test",
+        document_number=email.split("@")[0],
+        phone="1122334455",
+        password_hash="hash",
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+def _seed(session: Session) -> User:
     specialty = Specialty(name="cardiologia")
     session.add(specialty)
     session.flush()
@@ -31,61 +44,54 @@ def _seed(session: Session) -> None:
         ends_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=1, minutes=30),
     )
     session.add(slot)
+    user = _create_user(session, "juan@example.com")
     session.commit()
+    return user
 
 
 def test_tool_executor_books_real_slot() -> None:
-    """Flujo completo: identificar paciente → buscar disponibilidad → hold → confirm."""
     session = _make_session()
-    _seed(session)
+    user = _seed(session)
 
     checkpointer = MemorySaver()
-    interaction = ConversationOrchestrator(session, checkpointer).create_session(channel="web_chat")
+    interaction = ConversationOrchestrator(session, checkpointer, user).create_session(
+        channel="web_chat"
+    )
 
-    # Construir tools con closures sobre la sesión y la interacción
     tools_list = build_tools(session, interaction)
-    tools = {t.name: t for t in tools_list}
+    tools = {tool.name: tool for tool in tools_list}
+    assert "identify_or_create_patient" not in tools
 
-    # identify_or_create_patient
-    patient_result = tools["identify_or_create_patient"].invoke({
-        "full_name": "Juan Perez",
-        "document_number": "12345678",
-        "phone": "1122334455",
-    })
-    assert patient_result["ok"] is True
-    assert patient_result["patient_id"] is not None
-
-    # search_availability
     avail_result = tools["search_availability"].invoke({"specialty_name": "cardiologia"})
     assert avail_result["ok"] is True
     assert len(avail_result["slots"]) >= 1
     slot_id = avail_result["slots"][0]["id"]
 
-    # hold_slot
     hold_result = tools["hold_slot"].invoke({"slot_id": slot_id})
     assert hold_result["ok"] is True
     assert hold_result["held_until"] is not None
 
-    # confirm_appointment
     confirm_result = tools["confirm_appointment"].invoke({"explicit_confirmation": True})
     assert confirm_result["ok"] is True
+    assert confirm_result["appointment"]["user_id"] == user.id
     assert confirm_result["appointment"]["confirmation_code"].startswith("TUR-")
 
 
-def test_cannot_hold_without_patient() -> None:
-    """Hold sin paciente identificado no debe confirmar — falla en confirm, no en hold."""
+def test_confirm_fails_without_valid_user() -> None:
     session = _make_session()
-    _seed(session)
+    user = _seed(session)
 
-    checkpointer = MemorySaver()
-    interaction = ConversationOrchestrator(session, checkpointer).create_session(channel="web_chat")
-    tools_list = build_tools(session, interaction)
-    tools = {t.name: t for t in tools_list}
+    interaction = ConversationOrchestrator(session, MemorySaver(), user).create_session(
+        channel="web_chat"
+    )
+    interaction.user_id = 999
+    session.add(interaction)
+    session.commit()
+    tools = {tool.name: tool for tool in build_tools(session, interaction)}
 
     hold_result = tools["hold_slot"].invoke({"slot_id": 1})
-    assert hold_result["ok"] is True  # hold no requiere paciente
+    assert hold_result["ok"] is True
 
-    # confirm SÍ requiere paciente → falla
     confirm_result = tools["confirm_appointment"].invoke({"explicit_confirmation": True})
     assert confirm_result["ok"] is False
 
@@ -116,7 +122,8 @@ def test_catalog_tool_lists_active_specialties_and_doctors() -> None:
     )
     session.commit()
 
-    orchestrator = ConversationOrchestrator(session, MemorySaver())
+    user = _create_user(session)
+    orchestrator = ConversationOrchestrator(session, MemorySaver(), user)
     interaction = orchestrator.create_session(channel="web_chat")
     tools = {tool.name: tool for tool in build_tools(session, interaction)}
 
@@ -139,7 +146,8 @@ def test_catalog_tool_lists_active_specialties_and_doctors() -> None:
 
 def test_finish_turn_sanitizes_before_logging() -> None:
     session = _make_session()
-    orchestrator = ConversationOrchestrator(session, MemorySaver())
+    user = _create_user(session)
+    orchestrator = ConversationOrchestrator(session, MemorySaver(), user)
     interaction = orchestrator.create_session(channel="web_chat")
 
     result = orchestrator._finish_turn(

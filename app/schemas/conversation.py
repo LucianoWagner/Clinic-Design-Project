@@ -11,6 +11,7 @@ class ConversationCreate(BaseModel):
 
 class ConversationRead(BaseModel):
     id: int
+    user_id: int
     channel: Channel
     status: str
     current_state: str

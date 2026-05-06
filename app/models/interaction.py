@@ -18,7 +18,7 @@ class InteractionSession(SQLModel, table=True):
     channel: str = Field(default=Channel.web_chat.value, index=True)
     status: str = Field(default=InteractionStatus.started.value, index=True)
     current_state: str = Field(default="greeting", index=True, max_length=80)
-    patient_id: Optional[int] = Field(default=None, foreign_key="patients.id", index=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
     pending_slot_id: Optional[int] = Field(default=None, foreign_key="appointment_slots.id")
     collected_data: dict = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=utcnow)

@@ -33,7 +33,7 @@ class Appointment(SQLModel, table=True):
     __table_args__ = (UniqueConstraint("slot_id", name="uq_appointment_slot"),)
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    patient_id: int = Field(foreign_key="patients.id", index=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
     doctor_id: int = Field(foreign_key="doctors.id", index=True)
     slot_id: int = Field(foreign_key="appointment_slots.id", index=True)
     interaction_session_id: int = Field(foreign_key="interaction_sessions.id", index=True)

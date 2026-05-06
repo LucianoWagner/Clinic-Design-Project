@@ -49,7 +49,8 @@ El proyecto utiliza un patrón de memoria separada, alojada en la misma base Pos
 1. **Memoria de Negocio (`interaction_sessions`)**:
    - Manejada por SQLModel.
    - Tiene un `id` numérico.
-   - Guarda el estado real: `patient_id`, `pending_slot_id`, `current_state`.
+   - Guarda el estado real: `user_id`, `pending_slot_id`, `current_state`.
+   - `user_id` es obligatorio; `Patient` fue eliminado del MVP y `User` representa a la persona que reserva.
 
 2. **Memoria del Agente (`checkpoints`)**:
    - Manejada por `PostgresSaver` de LangGraph (se autoconfigura en el `lifespan` de FastAPI).
@@ -65,7 +66,6 @@ Las tools están definidas en `app/agents/tools.py` usando una factory `build_to
 
 Tools disponibles:
 - `list_specialties_and_doctors` (catalogo de especialidades y medicos activos; no busca turnos).
-- `identify_or_create_patient`
 - `search_availability`
 - `hold_slot`
 - `confirm_appointment` (requiere `explicit_confirmation=True`).
@@ -132,12 +132,22 @@ Tools disponibles:
 - **Auditoría**: si se modifica una respuesta, se registra `response_sanitized` en `interaction_logs` antes del `message_sent` limpio.
 - **Tests**: `tests/test_response_sanitizer.py` cubre sanitización normal/multilinea/streaming. `tests/test_conversation.py` cubre la tool de catálogo y que `_finish_turn` loguee la respuesta limpia.
 
+### Auth JWT y Usuario como Persona de Turno (Fase 3 Completada)
+- **Modelo de identidad**: `User` reemplaza a `Patient`. El registro pide `full_name`, `email`, `document_number`, `phone` y password. Login por email/password.
+- **Migración destructiva MVP**: `0003_users_auth_clean_mvp` limpia conversaciones, logs, checkpoints, appointments y patients; crea `users`; cambia `interaction_sessions.user_id` y `appointments.user_id` a obligatorios.
+- **Auth modular**: `app/core/security.py`, `app/api/deps.py`, `app/services/auth_service.py`, `app/api/routes/auth.py`.
+- **Endpoints auth**: `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`.
+- **Conversaciones por usuario**: `POST/GET/DELETE /api/conversations` requieren JWT y filtran por owner. `POST /api/conversations/{id}/messages` valida ownership.
+- **WebSocket con auth**: `/api/ws/conversations/{id}` exige primer mensaje `{type: "auth", token}` antes de aceptar `user_message`.
+- **Agente sin paciente**: se removió `identify_or_create_patient`. El prompt no debe pedir nombre/DNI/teléfono para reservar; esos datos se inyectan desde `User`.
+- **Frontend actual**: login/register/logout mínimo en `app/static`, token en `localStorage`, REST con Bearer token y WS con mensaje auth inicial.
+
 ## Siguientes Pasos (Roadmap)
 
-### Fase 3 - Login y Multi-paciente
-- Sistema de autenticación (JWT).
-- Endpoint `GET /api/conversations` para listar historial de chats por usuario.
-- Endpoint `DELETE /api/conversations/{id}` para borrar conversaciones.
+### Fase 4 - Roles/Admin y Frontend Next.js
+- Proteger endpoints administrativos (`/appointment-slots`, `/appointments`) con roles.
+- Migrar frontend a Next.js + shadcn cuando el flujo de auth/conversaciones esté estabilizado.
+- Evaluar cookies HttpOnly/Secure y refresh tokens para producción.
 
 ## Convenciones Para Agentes
 - Nunca mezclar llamadas directas a Groq SDK con LangChain. Usar siempre `ChatGroq`.
@@ -145,3 +155,4 @@ Tools disponibles:
 - Nunca pasar la `Session` de SQLModel como parámetro visible para el LLM.
 - Evitar modificar la tabla `checkpoints` a mano; usar los métodos del `PostgresSaver`.
 - Nunca devolver al usuario ni guardar como `message_sent` sintaxis interna de tools. Si se toca el flujo del agente, preservar `response_sanitizer.py` en REST y streaming.
+- No reintroducir `Patient` en este MVP. Turnos, conversaciones y agente deben usar `User`.

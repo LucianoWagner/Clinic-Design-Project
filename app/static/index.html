@@ -39,7 +39,39 @@
   </head>
 
   <body class="h-full bg-slate-950 font-sans antialiased overflow-hidden">
-    <div class="flex h-full">
+    <section id="authView" class="hidden h-full items-center justify-center px-4 bg-slate-950">
+      <div class="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+        <div class="mb-6">
+          <p class="text-xs font-semibold uppercase tracking-wider text-cyan-400">Consultorio</p>
+          <h1 class="mt-2 text-xl font-semibold text-white">Ingresar al asistente</h1>
+          <p class="mt-1 text-sm text-slate-400">Usá tu cuenta para guardar conversaciones y turnos.</p>
+        </div>
+
+        <div class="mb-4 grid grid-cols-2 rounded-xl border border-slate-700 bg-slate-950 p-1">
+          <button id="loginTab" type="button" class="rounded-lg px-3 py-2 text-sm font-medium text-white bg-slate-800">Login</button>
+          <button id="registerTab" type="button" class="rounded-lg px-3 py-2 text-sm font-medium text-slate-400">Registro</button>
+        </div>
+
+        <form id="loginForm" class="space-y-3">
+          <input id="loginEmail" type="email" autocomplete="email" placeholder="Email" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
+          <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Contraseña" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
+          <button type="submit" class="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600">Entrar</button>
+        </form>
+
+        <form id="registerForm" class="hidden space-y-3">
+          <input id="registerFullName" type="text" autocomplete="name" placeholder="Nombre completo" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
+          <input id="registerEmail" type="email" autocomplete="email" placeholder="Email" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
+          <input id="registerDocument" type="text" inputmode="numeric" placeholder="DNI" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
+          <input id="registerPhone" type="tel" autocomplete="tel" placeholder="Teléfono" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
+          <input id="registerPassword" type="password" autocomplete="new-password" placeholder="Contraseña (mínimo 8 caracteres)" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
+          <button type="submit" class="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600">Crear cuenta</button>
+        </form>
+
+        <p id="authStatus" class="mt-4 min-h-[20px] text-sm text-slate-400" role="status"></p>
+      </div>
+    </section>
+
+    <div id="appShell" class="hidden h-full">
 
       <!-- ══════════════════════════════════════════════════════
            SIDEBAR
@@ -147,6 +179,13 @@
           </div>
 
           <div class="flex items-center gap-3">
+            <div class="hidden sm:block text-right">
+              <p id="userNameLabel" class="text-xs font-medium text-slate-300"></p>
+              <p id="userEmailLabel" class="text-[11px] text-slate-500"></p>
+            </div>
+            <button id="logoutBtn" class="text-xs font-medium text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 bg-slate-800/50 hover:bg-slate-700 transition-colors" type="button">
+              Salir
+            </button>
             <!-- Call Button -->
             <button id="callBtn"
               class="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors
@@ -270,6 +309,6 @@
       </main>
     </div>
 
-    <script src="/app.js?v=11"></script>
+    <script src="/app.js?v=12"></script>
   </body>
 </html>

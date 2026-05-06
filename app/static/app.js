@@ -19,6 +19,23 @@ const callBtn = $("callBtn");
 const callBtnLabel = $("callBtnLabel");
 const callStatus = $("callStatus");
 const headerSubtitle = $("headerSubtitle");
+const authView = $("authView");
+const appShell = $("appShell");
+const loginTab = $("loginTab");
+const registerTab = $("registerTab");
+const loginForm = $("loginForm");
+const registerForm = $("registerForm");
+const loginEmail = $("loginEmail");
+const loginPassword = $("loginPassword");
+const registerFullName = $("registerFullName");
+const registerEmail = $("registerEmail");
+const registerDocument = $("registerDocument");
+const registerPhone = $("registerPhone");
+const registerPassword = $("registerPassword");
+const authStatus = $("authStatus");
+const logoutBtn = $("logoutBtn");
+const userNameLabel = $("userNameLabel");
+const userEmailLabel = $("userEmailLabel");
 
 const criticalEls = { messagesEl, chatForm, messageInput };
 for (const [name, el] of Object.entries(criticalEls)) {
@@ -29,7 +46,28 @@ for (const [name, el] of Object.entries(criticalEls)) {
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;  // STT de un solo turno (modo texto)
 let isLoading = false;
-let conversationId = localStorage.getItem("conversationId");
+let authToken = localStorage.getItem("accessToken");
+let currentUser = null;
+let conversationId = null;
+
+function _conversationStorageKey() {
+  return currentUser ? `conversationId:${currentUser.id}` : "conversationId";
+}
+
+function _loadConversationId() {
+  conversationId = localStorage.getItem(_conversationStorageKey());
+}
+
+function _saveConversationId(id) {
+  conversationId = String(id);
+  localStorage.setItem(_conversationStorageKey(), conversationId);
+}
+
+function _clearConversationId() {
+  if (currentUser) localStorage.removeItem(_conversationStorageKey());
+  localStorage.removeItem("conversationId");
+  conversationId = null;
+}
 
 /* ─── Message Bubbles ────────────────────────────────────────────── */
 function _createBubble(role) {
@@ -87,6 +125,91 @@ function setStatus(text, variant = "") {
   if (variant === "error") statusBar.classList.add("text-red-400");
   else if (variant === "info") statusBar.classList.add("text-cyan-400");
   else statusBar.classList.add("text-slate-500");
+}
+
+function setAuthStatus(text, variant = "") {
+  if (!authStatus) return;
+  authStatus.textContent = text;
+  authStatus.classList.remove("text-red-400", "text-cyan-400", "text-slate-400");
+  if (variant === "error") authStatus.classList.add("text-red-400");
+  else if (variant === "info") authStatus.classList.add("text-cyan-400");
+  else authStatus.classList.add("text-slate-400");
+}
+
+async function authFetch(url, options = {}) {
+  if (!authToken) throw new Error("Necesitás iniciar sesión.");
+  const headers = {
+    ...(options.headers || {}),
+    Authorization: `Bearer ${authToken}`,
+  };
+  return fetch(url, { ...options, headers });
+}
+
+function showAuth() {
+  appShell?.classList.add("hidden");
+  appShell?.classList.remove("flex");
+  authView?.classList.remove("hidden");
+  authView?.classList.add("flex");
+}
+
+function showApp() {
+  authView?.classList.add("hidden");
+  authView?.classList.remove("flex");
+  appShell?.classList.remove("hidden");
+  appShell?.classList.add("flex");
+  if (userNameLabel) userNameLabel.textContent = currentUser?.full_name ?? "";
+  if (userEmailLabel) userEmailLabel.textContent = currentUser?.email ?? "";
+}
+
+function setAuthMode(mode) {
+  const isLogin = mode === "login";
+  loginForm?.classList.toggle("hidden", !isLogin);
+  registerForm?.classList.toggle("hidden", isLogin);
+  loginTab?.classList.toggle("bg-slate-800", isLogin);
+  loginTab?.classList.toggle("text-white", isLogin);
+  loginTab?.classList.toggle("text-slate-400", !isLogin);
+  registerTab?.classList.toggle("bg-slate-800", !isLogin);
+  registerTab?.classList.toggle("text-white", !isLogin);
+  registerTab?.classList.toggle("text-slate-400", isLogin);
+  setAuthStatus("");
+}
+
+function setSession(data) {
+  authToken = data.access_token;
+  currentUser = data.user;
+  localStorage.setItem("accessToken", authToken);
+  _loadConversationId();
+  showApp();
+}
+
+function logout() {
+  if (VoiceCall.isActive) VoiceCall.stop();
+  _clearConversationId();
+  localStorage.removeItem("accessToken");
+  authToken = null;
+  currentUser = null;
+  messagesEl && (messagesEl.innerHTML = "");
+  showAuth();
+}
+
+async function initAuth() {
+  if (!authToken) {
+    showAuth();
+    return;
+  }
+
+  try {
+    const res = await authFetch("/api/auth/me");
+    if (!res.ok) throw new Error("Sesión expirada.");
+    currentUser = await res.json();
+    _loadConversationId();
+    showApp();
+  } catch {
+    localStorage.removeItem("accessToken");
+    authToken = null;
+    currentUser = null;
+    showAuth();
+  }
 }
 
 /* ─── Loading State (modo texto) ─────────────────────────────────── */
@@ -186,16 +309,16 @@ function speak(text) {
 
 /* ─── API Helpers ────────────────────────────────────────────────── */
 async function ensureConversation() {
+  if (!currentUser) throw new Error("Necesitás iniciar sesión.");
   if (conversationId) return conversationId;
-  const res = await fetch("/api/conversations", {
+  const res = await authFetch("/api/conversations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ channel: "web_chat" }),
   });
   if (!res.ok) throw new Error(`No se pudo iniciar la conversación (${res.status})`);
   const data = await res.json();
-  conversationId = String(data.id);
-  localStorage.setItem("conversationId", conversationId);
+  _saveConversationId(data.id);
   return conversationId;
 }
 
@@ -213,7 +336,7 @@ async function sendMessage(text, inputMode = "text") {
 
   try {
     const id = await ensureConversation();
-    const res = await fetch(`/api/conversations/${id}/messages`, {
+    const res = await authFetch(`/api/conversations/${id}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: trimmed, input_mode: inputMode }),
@@ -248,6 +371,55 @@ messageInput?.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !isLoading) {
     e.preventDefault();
     sendMessage(messageInput.value);
+  }
+});
+
+loginTab?.addEventListener("click", () => setAuthMode("login"));
+registerTab?.addEventListener("click", () => setAuthMode("register"));
+logoutBtn?.addEventListener("click", logout);
+
+loginForm?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  setAuthStatus("Ingresando…", "info");
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: loginEmail?.value ?? "",
+        password: loginPassword?.value ?? "",
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "No se pudo iniciar sesión.");
+    setSession(data);
+    setAuthStatus("");
+  } catch (err) {
+    setAuthStatus(err.message, "error");
+  }
+});
+
+registerForm?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  setAuthStatus("Creando cuenta…", "info");
+  try {
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        full_name: registerFullName?.value ?? "",
+        email: registerEmail?.value ?? "",
+        document_number: registerDocument?.value ?? "",
+        phone: registerPhone?.value ?? "",
+        password: registerPassword?.value ?? "",
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "No se pudo crear la cuenta.");
+    setSession(data);
+    setAuthStatus("");
+  } catch (err) {
+    setAuthStatus(err.message, "error");
   }
 });
 
@@ -296,7 +468,7 @@ voiceButton?.addEventListener("click", () => {
 newChatBtn?.addEventListener("click", () => {
   if (VoiceCall.isActive) VoiceCall.stop();
   if (confirm("¿Empezar una nueva consulta y borrar el chat actual?")) {
-    localStorage.removeItem("conversationId");
+    _clearConversationId();
     location.reload();
   }
 });
@@ -327,7 +499,6 @@ const VoiceCall = (() => {
   /* Etiquetas amigables para tool events */
   const TOOL_LABELS = {
     search_availability: "Buscando disponibilidad…",
-    identify_or_create_patient: "Registrando paciente…",
     hold_slot: "Reservando turno…",
     confirm_appointment: "Confirmando turno…",
   };
@@ -609,6 +780,7 @@ const VoiceCall = (() => {
     ws = new WebSocket(`${protocol}://${location.host}/api/ws/conversations/${convId}`);
 
     ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "auth", token: authToken }));
       active = true;
       _setCallUI(true);
       setStatus("Llamada conectada. Presioná Hablar cuando quieras.", "info");
@@ -693,3 +865,5 @@ addMessage(
   "Podés escribirme o presionar 📞 Llamar para hablar directamente. " +
   "¿Con qué especialidad o médico querés consultar?"
 );
+
+initAuth();
