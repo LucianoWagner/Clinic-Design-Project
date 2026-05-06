@@ -29,6 +29,7 @@ app/
     groq_client.py     # Singleton del ChatGroq.
     orchestrator.py    # Orquestador que inyecta estado en el agente.
     prompt.py          # System Prompt del consultorio.
+    response_sanitizer.py # Sanitizador defensivo de respuestas del agente.
     tools.py           # Factory de funciones @tool con closures (session/interaction).
   core/
     config.py          # Settings (max_agent_iterations, max_context_messages).
@@ -63,6 +64,7 @@ Las tools están definidas en `app/agents/tools.py` usando una factory `build_to
 - El acceso a PostgreSQL y la auditoría ocurren dentro de la clausura de la función en Python.
 
 Tools disponibles:
+- `list_specialties_and_doctors` (catalogo de especialidades y medicos activos; no busca turnos).
 - `identify_or_create_patient`
 - `search_availability`
 - `hold_slot`
@@ -121,6 +123,15 @@ Tools disponibles:
   - **Turn-taking de llamada**: El botón "Hablar" no queda bloqueado durante escucha; en estado listening muestra "Detener" y permite cancelar sin colgar la llamada. `SpeechRecognition` en llamada usa `interimResults=false` porque fue el modo más estable en Chrome para este proyecto.
   - **Limitación conocida**: La calidad de lo que dice el agente al hablar aún puede necesitar ajuste fino de prompt/respuesta para sonar más natural en voz.
   - **Alucinación de JSON**: Se agregó una restricción dura en el `SYSTEM_PROMPT` para evitar que LLMs veloces como Llama 3 70B intenten escupir argumentos JSON directamente al usuario en vez de usar la API de herramientas.
+
+### Calidad de Respuestas del Agente (Fase 2.5 Completada)
+- **Tool de catálogo**: `list_specialties_and_doctors` responde preguntas como "que medicos tenes" o "que especialidades hay" consultando `specialties` y `doctors` activos. No reemplaza `search_availability`; solo lista catálogo.
+- **Prompt reforzado**: `SYSTEM_PROMPT` prohíbe mostrar JSON, nombres de tools, argumentos internos o bloques tipo `<function=...>`. Para síntomas no urgentes, el agente no debe listar causas ni sugerir tratamientos; debe aclarar límites y ofrecer sacar turno.
+- **Sanitización defensiva**: `app/agents/response_sanitizer.py` remueve pseudo tool calls (`<function=...>{...}</function>`) y JSON residual antes de responder/loguear.
+- **REST + Streaming**: `ConversationOrchestrator` sanitiza respuestas REST antes de `message_sent` y filtra tokens del WebSocket con `StreamingFunctionCallSanitizer` para evitar fugas en vivo.
+- **Auditoría**: si se modifica una respuesta, se registra `response_sanitized` en `interaction_logs` antes del `message_sent` limpio.
+- **Tests**: `tests/test_response_sanitizer.py` cubre sanitización normal/multilinea/streaming. `tests/test_conversation.py` cubre la tool de catálogo y que `_finish_turn` loguee la respuesta limpia.
+
 ## Siguientes Pasos (Roadmap)
 
 ### Fase 3 - Login y Multi-paciente
@@ -133,3 +144,4 @@ Tools disponibles:
 - Toda nueva tool debe agregarse en `build_tools()` y ser una función decorada con `@tool`.
 - Nunca pasar la `Session` de SQLModel como parámetro visible para el LLM.
 - Evitar modificar la tabla `checkpoints` a mano; usar los métodos del `PostgresSaver`.
+- Nunca devolver al usuario ni guardar como `message_sent` sintaxis interna de tools. Si se toca el flujo del agente, preservar `response_sanitizer.py` en REST y streaming.
