@@ -12,6 +12,8 @@ from app.models.enums import SlotStatus
 from app.models.interaction import InteractionSession
 from app.models.user import User
 from app.schemas.appointment import AppointmentRead, SlotRead
+from app.services.appointment_email_builder import AppointmentEmailBuilder
+from app.services.email_outbox_service import EmailOutboxService
 
 
 class AppointmentConflictError(Exception):
@@ -127,13 +129,18 @@ class AppointmentService:
             raise AppointmentValidationError("Falta confirmación explícita.")
 
         interaction = self.session.get(InteractionSession, interaction_session_id)
-        if not interaction or not interaction.user_id or not self.session.get(User, interaction.user_id):
+        user = self.session.get(User, interaction.user_id) if interaction else None
+        if not interaction or not interaction.user_id or not user:
             raise AppointmentValidationError("Falta usuario autenticado.")
 
         slot = self.session.get(AppointmentSlot, slot_id)
+        doctor = self.session.get(Doctor, slot.doctor_id) if slot else None
+        specialty = self.session.get(Specialty, doctor.specialty_id) if doctor else None
         now = datetime.now(UTC).replace(tzinfo=None)
         if not slot:
             raise AppointmentValidationError("El turno seleccionado no existe.")
+        if not doctor or not specialty:
+            raise AppointmentValidationError("El turno no tiene profesional o especialidad valida.")
         if (
             slot.status != SlotStatus.held.value
             or slot.held_by_interaction_session_id != interaction_session_id
@@ -146,7 +153,6 @@ class AppointmentService:
             user_id=interaction.user_id,
             doctor_id=slot.doctor_id,
             slot_id=slot.id or 0,
-            interaction_session_id=interaction_session_id,
         )
         slot.status = SlotStatus.booked.value
         slot.held_until = None
@@ -157,11 +163,24 @@ class AppointmentService:
         except IntegrityError as exc:
             raise AppointmentConflictError("Ese turno ya fue confirmado.") from exc
 
+        confirmation_code = f"TUR-{appointment.id}"
+        email = AppointmentEmailBuilder().build(
+            user=user,
+            doctor=doctor,
+            specialty=specialty,
+            slot=slot,
+            confirmation_code=confirmation_code,
+        )
+        EmailOutboxService(self.session).enqueue_appointment_confirmation(
+            appointment_id=appointment.id or 0,
+            email=email,
+        )
+
         return AppointmentRead(
             id=appointment.id or 0,
             user_id=appointment.user_id,
             doctor_id=appointment.doctor_id,
             slot_id=appointment.slot_id,
             starts_at=slot.starts_at,
-            confirmation_code=f"TUR-{appointment.id}",
+            confirmation_code=confirmation_code,
         )

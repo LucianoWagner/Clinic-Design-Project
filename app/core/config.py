@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     max_agent_iterations: int = 6
     # Ventana de mensajes de historial para reconstruir contexto (fallback sin checkpointer)
     max_context_messages: int = 12
+    max_conversations_per_user: int = 2
     cors_origins: list[str] = ["http://localhost:8000", "http://127.0.0.1:8000"]
     jwt_secret_key: str = "dev-change-me"
     jwt_algorithm: str = "HS256"
@@ -22,6 +23,10 @@ class Settings(BaseSettings):
     # Configuración TTS (ElevenLabs)
     elevenlabs_api_key: str | None = None
     elevenlabs_voice_id: str = "pNInz6obpgDQGcFmaJcg"  # Voice 'Fin' por defecto
+    email_enabled: bool = False
+    email_provider: str = "resend"
+    email_from: str = "Consultorio <turnos@example.com>"
+    resend_api_key: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

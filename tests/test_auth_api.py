@@ -139,6 +139,51 @@ def test_conversations_are_scoped_to_authenticated_user(client: TestClient) -> N
     assert client.get("/api/conversations", headers=headers_a).json() == []
 
 
+def test_conversation_retention_keeps_two_latest_per_user(client: TestClient) -> None:
+    user_a = _register(client, "a@example.com", "11111111")
+    user_b = _register(client, "b@example.com", "22222222")
+    headers_a = {"Authorization": f"Bearer {user_a['access_token']}"}
+    headers_b = {"Authorization": f"Bearer {user_b['access_token']}"}
+
+    first = client.post("/api/conversations", json={"channel": "web_chat"}, headers=headers_a)
+    second = client.post("/api/conversations", json={"channel": "web_chat"}, headers=headers_a)
+    b_conversation = client.post("/api/conversations", json={"channel": "web_chat"}, headers=headers_b)
+    third = client.post("/api/conversations", json={"channel": "web_chat"}, headers=headers_a)
+
+    assert first.status_code == second.status_code == third.status_code == 200
+    ids_a = [item["id"] for item in client.get("/api/conversations", headers=headers_a).json()]
+    assert ids_a == [third.json()["id"], second.json()["id"]]
+
+    old_messages = client.get(f"/api/conversations/{first.json()['id']}/messages", headers=headers_a)
+    assert old_messages.status_code == 404
+    ids_b = [item["id"] for item in client.get("/api/conversations", headers=headers_b).json()]
+    assert ids_b == [b_conversation.json()["id"]]
+
+
+def test_visible_conversation_messages_are_persisted(client: TestClient, monkeypatch) -> None:
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "groq_api_key", "")
+    user = _register(client)
+    headers = {"Authorization": f"Bearer {user['access_token']}"}
+    created = client.post("/api/conversations", json={"channel": "web_chat"}, headers=headers)
+    conversation_id = created.json()["id"]
+
+    response = client.post(
+        f"/api/conversations/{conversation_id}/messages",
+        json={"message": "Hola", "input_mode": "text"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+
+    messages = client.get(f"/api/conversations/{conversation_id}/messages", headers=headers)
+    assert messages.status_code == 200
+    payload = messages.json()
+    assert [message["role"] for message in payload] == ["user", "assistant"]
+    assert payload[0]["content"] == "Hola"
+    assert "Groq" in payload[1]["content"]
+
+
 def test_websocket_requires_auth_and_ownership(client: TestClient) -> None:
     user_a = _register(client, "a@example.com", "11111111")
     user_b = _register(client, "b@example.com", "22222222")

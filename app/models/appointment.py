@@ -36,7 +36,6 @@ class Appointment(SQLModel, table=True):
     user_id: int = Field(foreign_key="users.id", index=True)
     doctor_id: int = Field(foreign_key="doctors.id", index=True)
     slot_id: int = Field(foreign_key="appointment_slots.id", index=True)
-    interaction_session_id: int = Field(foreign_key="interaction_sessions.id", index=True)
     status: str = Field(default=AppointmentStatus.confirmed.value, index=True)
     confirmation_source: str = Field(default="web_agent", max_length=80)
     confirmed_at: datetime = Field(default_factory=utcnow)

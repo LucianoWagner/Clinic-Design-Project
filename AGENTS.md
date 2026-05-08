@@ -57,6 +57,11 @@ El proyecto utiliza un patrón de memoria separada, alojada en la misma base Pos
    - Guarda el historial de mensajes (`HumanMessage`, `AIMessage`, `ToolMessage`).
    - Se vincula a la sesión de negocio usando `thread_id = str(InteractionSession.id)`.
 
+3. **Historial visible (`conversation_messages`)**:
+   - Tabla propia para renderizar el chat en el frontend.
+   - Guarda mensajes completos visibles (`user`/`assistant`) por `interaction_session_id`.
+   - No reemplaza checkpoints de LangGraph ni `interaction_logs`.
+
 ## Tools y Seguridad (Closures)
 
 Las tools están definidas en `app/agents/tools.py` usando una factory `build_tools(session, interaction)`.
@@ -142,6 +147,21 @@ Tools disponibles:
 - **Agente sin paciente**: se removió `identify_or_create_patient`. El prompt no debe pedir nombre/DNI/teléfono para reservar; esos datos se inyectan desde `User`.
 - **Frontend actual**: login/register/logout mínimo en `app/static`, token en `localStorage`, REST con Bearer token y WS con mensaje auth inicial.
 
+### Sidebar e Historial de Conversaciones (Fase 3.5 Completada)
+- **Panel lateral tipo ChatGPT**: el frontend muestra hasta 2 conversaciones recientes del usuario y permite cargar sus mensajes visibles.
+- **Retención backend**: `settings.max_conversations_per_user = 2`. Al crear una sesión nueva, `ConversationRetentionService` elimina físicamente las conversaciones excedentes del mismo usuario.
+- **Historial visible**: `conversation_messages` es la fuente para renderizar chats. `interaction_logs` sigue siendo auditoría y puede estar truncado.
+- **Limpieza de memoria LangGraph**: `ConversationCheckpointService` borra checkpoints por `thread_id = str(interaction_session.id)` usando API pública si existe, o fallback SQL por `thread_id` en tablas `checkpoint_writes`, `checkpoint_blobs`, `checkpoints`.
+- **Appointments desacoplados de sesión**: `Appointment` queda asociado a `user_id`, `doctor_id` y `slot_id`. La sesión de chat solo se usa para holds temporales y contexto del agente, no como parte del dominio del turno confirmado.
+- **Frontend actual**: “Nueva consulta” limpia la UI local y no crea sesión hasta que el usuario escribe o inicia llamada. Al crearse una nueva sesión, el sidebar se refresca y la más vieja se elimina por backend.
+
+### Emails Transaccionales con Resend (Fase 3.6 Completada)
+- **Proveedor**: Resend, configurado con `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_ENABLED` y `EMAIL_PROVIDER=resend`.
+- **Outbox transaccional**: `email_outbox` guarda emails pendientes, enviados o fallidos. El turno se confirma aunque el proveedor de email falle.
+- **Confirmación de turno**: `AppointmentService.confirm_appointment()` crea el `Appointment` y encola un email de confirmación para `User.email` con profesional, especialidad, fecha/hora y código.
+- **Despacho post-commit**: `ConversationOrchestrator` llama `EmailOutboxService.dispatch_pending()` después del commit del turno/respuesta. Nunca enviar email antes de confirmar la transacción.
+- **Privacidad**: los emails de turno no deben incluir síntomas, diagnóstico ni contenido de conversación.
+
 ## Siguientes Pasos (Roadmap)
 
 ### Fase 4 - Roles/Admin y Frontend Next.js
@@ -156,3 +176,13 @@ Tools disponibles:
 - Evitar modificar la tabla `checkpoints` a mano; usar los métodos del `PostgresSaver`.
 - Nunca devolver al usuario ni guardar como `message_sent` sintaxis interna de tools. Si se toca el flujo del agente, preservar `response_sanitizer.py` en REST y streaming.
 - No reintroducir `Patient` en este MVP. Turnos, conversaciones y agente deben usar `User`.
+- No usar checkpoints de LangGraph ni `interaction_logs` para renderizar el historial visible. Usar `conversation_messages`.
+- No volver a asociar `Appointment` a `interaction_session_id`; los turnos confirmados pertenecen al `User`.
+- Nunca enviar emails directamente desde tools o antes del commit. Usar `email_outbox` y despachar post-commit.
+
+### Fase 4 (Completada) - Refinamiento de Voz y UI
+- **Codificación en Frontend (Mojibake):** Se resolvieron problemas de doble codificación UTF-8 en `app.js` mediante limpieza manual y versionado forzado en `index.html` (`?v=X`) para evitar problemas de caché del navegador.
+- **Doble Capa para Listas en Voz:** Para evitar que el agente dicte en audio listas largas (como turnos u horarios disponibles):
+  1. **Prompt preventivo:** El LLM siempre antepone un resumen verbal de máximo 2 oraciones antes de enlistar.
+  2. **Barrera de backend (`tts_text`):** Durante el modo llamada, el websocket solo envía al frontend el texto resumido (`extract_spoken_text` en `tts_service.py`), filtrando el contenido estructurado (listas, markdown).
+  - El resultado es que **el chat muestra el texto completo**, pero **el TTS solo reproduce la introducción conversacional**.

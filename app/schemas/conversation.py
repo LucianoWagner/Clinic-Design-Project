@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -15,6 +16,20 @@ class ConversationRead(BaseModel):
     channel: Channel
     status: str
     current_state: str
+    title: str
+    preview: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    last_messages: list["ConversationMessageRead"] = Field(default_factory=list)
+
+
+class ConversationMessageRead(BaseModel):
+    id: int
+    conversation_id: int
+    role: Literal["user", "assistant"]
+    content: str
+    input_mode: str
+    created_at: datetime
 
 
 class MessageCreate(BaseModel):
@@ -24,12 +39,12 @@ class MessageCreate(BaseModel):
 
 class AgentAction(BaseModel):
     type: str
-    payload: dict = {}
+    payload: dict = Field(default_factory=dict)
 
 
 class MessageRead(BaseModel):
     conversation_id: int
     response: str
     state: str
-    actions: list[AgentAction] = []
+    actions: list[AgentAction] = Field(default_factory=list)
     transcript: Optional[str] = None

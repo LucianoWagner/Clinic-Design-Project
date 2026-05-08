@@ -6,9 +6,11 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from app.agents.orchestrator import ConversationOrchestrator
 from app.agents.tools import build_tools
 from app.models.appointment import AppointmentSlot
+from app.models.conversation import ConversationMessage
 from app.models.doctor import Doctor, Specialty
 from app.models.interaction import InteractionLog
 from app.models.user import User
+from app.services.conversation_retention_service import ConversationRetentionService
 
 
 def _make_session() -> Session:
@@ -160,6 +162,47 @@ def test_finish_turn_sanitizes_before_logging() -> None:
     ).all()
     sent_logs = [log for log in logs if log.event_type == "message_sent"]
     sanitized_logs = [log for log in logs if log.event_type == "response_sanitized"]
+    messages = session.exec(
+        select(ConversationMessage).where(
+            ConversationMessage.interaction_session_id == interaction.id
+        )
+    ).all()
     assert result.response == "Respuesta humana."
     assert sent_logs[-1].message_summary == "Respuesta humana."
     assert len(sanitized_logs) == 1
+    assert messages[-1].role == "assistant"
+    assert messages[-1].content == "Respuesta humana."
+
+
+def test_retention_deletes_stale_conversation_and_checkpoint_thread() -> None:
+    class Checkpointer:
+        def __init__(self) -> None:
+            self.deleted: list[str] = []
+
+        async def adelete_thread(self, thread_id: str) -> None:
+            self.deleted.append(thread_id)
+
+    session = _make_session()
+    user = _create_user(session)
+    checkpointer = Checkpointer()
+    orchestrator = ConversationOrchestrator(session, MemorySaver(), user)
+    first = orchestrator.create_session(channel="web_chat")
+    second = orchestrator.create_session(channel="web_chat")
+    third = orchestrator.create_session(channel="web_chat")
+    assert first.id and second.id and third.id
+
+    orchestrator.history.add_message(first.id, "user", "vieja", "text")
+    session.commit()
+
+    import asyncio
+
+    asyncio.run(ConversationRetentionService(session, checkpointer).enforce_for_user(user.id or 0))
+    session.commit()
+
+    assert session.get(type(first), first.id) is None
+    assert session.get(type(second), second.id) is not None
+    assert session.get(type(third), third.id) is not None
+    assert checkpointer.deleted == [str(first.id)]
+    assert session.exec(
+        select(ConversationMessage).where(ConversationMessage.interaction_session_id == first.id)
+    ).all() == []

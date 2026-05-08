@@ -1,6 +1,5 @@
-from datetime import UTC, datetime
-from contextlib import contextmanager
 from collections.abc import Generator
+from contextlib import contextmanager
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, status
@@ -8,12 +7,20 @@ from sqlmodel import Session, select
 
 from app.agents.orchestrator import ConversationOrchestrator
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.core.security import decode_access_token
 from app.db.session import get_session
-from app.models.enums import InteractionStatus
 from app.models.interaction import InteractionSession
 from app.models.user import User
-from app.schemas.conversation import ConversationCreate, ConversationRead, MessageCreate, MessageRead
+from app.schemas.conversation import (
+    ConversationCreate,
+    ConversationMessageRead,
+    ConversationRead,
+    MessageCreate,
+    MessageRead,
+)
+from app.services.conversation_history_service import ConversationHistoryService
+from app.services.conversation_retention_service import ConversationRetentionService
 
 router = APIRouter(tags=["conversations"])
 
@@ -23,7 +30,7 @@ def get_checkpointer(request: Request):
 
 
 @router.post("/conversations", response_model=ConversationRead)
-def create_conversation(
+async def create_conversation(
     payload: ConversationCreate,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
@@ -31,7 +38,10 @@ def create_conversation(
 ) -> ConversationRead:
     orchestrator = ConversationOrchestrator(session, checkpointer, current_user)
     interaction = orchestrator.create_session(payload.channel)
-    return _conversation_read(interaction)
+    await ConversationRetentionService(session, checkpointer).enforce_for_user(current_user.id or 0)
+    session.commit()
+    session.refresh(interaction)
+    return _conversation_read(session, interaction)
 
 
 @router.get("/conversations", response_model=list[ConversationRead])
@@ -43,22 +53,32 @@ def list_conversations(
         select(InteractionSession)
         .where(InteractionSession.user_id == current_user.id)
         .where(InteractionSession.ended_at.is_(None))
-        .order_by(InteractionSession.updated_at.desc())
+        .order_by(InteractionSession.updated_at.desc(), InteractionSession.id.desc())
+        .limit(settings.max_conversations_per_user)
     )
-    return [_conversation_read(interaction) for interaction in session.exec(statement).all()]
+    return [_conversation_read(session, interaction) for interaction in session.exec(statement).all()]
 
 
-@router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_conversation(
+@router.get("/conversations/{conversation_id}/messages", response_model=list[ConversationMessageRead])
+def list_conversation_messages(
     conversation_id: int,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
+) -> list[ConversationMessageRead]:
+    _get_owned_interaction(session, conversation_id, current_user)
+    messages = ConversationHistoryService(session).list_messages(conversation_id)
+    return [_message_read(message) for message in messages]
+
+
+@router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_conversation(
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+    checkpointer=Depends(get_checkpointer),
 ) -> None:
     interaction = _get_owned_interaction(session, conversation_id, current_user)
-    interaction.status = InteractionStatus.abandoned.value
-    interaction.ended_at = datetime.now(UTC).replace(tzinfo=None)
-    interaction.updated_at = interaction.ended_at
-    session.add(interaction)
+    await ConversationRetentionService(session, checkpointer).delete_conversation(interaction)
     session.commit()
 
 
@@ -83,7 +103,7 @@ async def conversation_ws(websocket: WebSocket, conversation_id: int) -> None:
     try:
         auth_payload = await websocket.receive_json()
         if auth_payload.get("type") != "auth":
-            await websocket.send_json({"type": "error", "message": "Autenticación requerida."})
+            await websocket.send_json({"type": "error", "message": "Autenticacion requerida."})
             await websocket.close(code=1008)
             return
 
@@ -91,13 +111,13 @@ async def conversation_ws(websocket: WebSocket, conversation_id: int) -> None:
         with _websocket_session(websocket.app) as session:
             current_user = _user_from_token(session, token)
             if not current_user:
-                await websocket.send_json({"type": "error", "message": "Token inválido o expirado."})
+                await websocket.send_json({"type": "error", "message": "Token invalido o expirado."})
                 await websocket.close(code=1008)
                 return
             try:
                 _get_owned_interaction(session, conversation_id, current_user)
             except HTTPException:
-                await websocket.send_json({"type": "error", "message": "Conversación no encontrada."})
+                await websocket.send_json({"type": "error", "message": "Conversacion no encontrada."})
                 await websocket.close(code=1008)
                 return
 
@@ -109,13 +129,13 @@ async def conversation_ws(websocket: WebSocket, conversation_id: int) -> None:
             with _websocket_session(websocket.app) as session:
                 current_user = _user_from_token(session, token)
                 if not current_user:
-                    await websocket.send_json({"type": "error", "message": "Token inválido o expirado."})
+                    await websocket.send_json({"type": "error", "message": "Token invalido o expirado."})
                     await websocket.close(code=1008)
                     return
                 try:
                     _get_owned_interaction(session, conversation_id, current_user)
                 except HTTPException:
-                    await websocket.send_json({"type": "error", "message": "Conversación no encontrada."})
+                    await websocket.send_json({"type": "error", "message": "Conversacion no encontrada."})
                     await websocket.close(code=1008)
                     return
                 orchestrator = ConversationOrchestrator(session, checkpointer, current_user)
@@ -126,14 +146,42 @@ async def conversation_ws(websocket: WebSocket, conversation_id: int) -> None:
         return
 
 
-def _conversation_read(interaction: InteractionSession) -> ConversationRead:
+def _conversation_read(session: Session, interaction: InteractionSession) -> ConversationRead:
+    history = ConversationHistoryService(session)
+    first_user_message = history.first_user_message(interaction.id or 0)
+    latest_message = history.latest_message(interaction.id or 0)
     return ConversationRead(
         id=interaction.id or 0,
         user_id=interaction.user_id,
         channel=interaction.channel,
         status=interaction.status,
         current_state=interaction.current_state,
+        title=_title_from_message(first_user_message.content if first_user_message else None),
+        preview=latest_message.content if latest_message else None,
+        created_at=interaction.created_at,
+        updated_at=interaction.updated_at,
+        last_messages=[
+            _message_read(message) for message in history.last_messages(interaction.id or 0, limit=2)
+        ],
     )
+
+
+def _message_read(message) -> ConversationMessageRead:
+    return ConversationMessageRead(
+        id=message.id or 0,
+        conversation_id=message.interaction_session_id,
+        role=message.role,
+        content=message.content,
+        input_mode=message.input_mode,
+        created_at=message.created_at,
+    )
+
+
+def _title_from_message(message: str | None) -> str:
+    if not message:
+        return "Nueva consulta"
+    clean = " ".join(message.split())
+    return clean[:44] + ("..." if len(clean) > 44 else "")
 
 
 def _get_owned_interaction(
@@ -141,7 +189,7 @@ def _get_owned_interaction(
 ) -> InteractionSession:
     interaction = session.get(InteractionSession, conversation_id)
     if not interaction or interaction.user_id != current_user.id or interaction.ended_at is not None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversación no encontrada.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversacion no encontrada.")
     return interaction
 
 

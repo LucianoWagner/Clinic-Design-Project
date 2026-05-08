@@ -1,314 +1,351 @@
 <!doctype html>
 <html lang="es" class="h-full">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Consultorio — Asistente de Turnos</title>
-    <meta name="description" content="Agendá tu turno médico con nuestro asistente de inteligencia artificial disponible las 24hs." />
 
-    <!-- Tailwind CSS via CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] },
-            colors: {
-              brand: { DEFAULT: '#06b6d4', dark: '#0891b2', glow: 'rgba(6,182,212,0.2)' },
-            },
-            animation: {
-              'bounce-dot': 'bounce-dot 1.2s ease-in-out infinite',
-              'pulse-ring': 'pulse-ring 1.5s ease-in-out infinite',
-              'msg-in': 'msg-in 0.2s ease both',
-              'blink': 'blink 1s step-end infinite',
-            },
-            keyframes: {
-              'bounce-dot': { '0%,60%,100%': { transform: 'translateY(0)', opacity: '0.4' }, '30%': { transform: 'translateY(-6px)', opacity: '1' } },
-              'pulse-ring':  { '0%': { boxShadow: '0 0 0 0 rgba(248,81,73,0.5)' }, '70%': { boxShadow: '0 0 0 10px rgba(248,81,73,0)' }, '100%': { boxShadow: '0 0 0 0 rgba(248,81,73,0)' } },
-              'msg-in':      { from: { opacity: '0', transform: 'translateY(6px)' }, to:   { opacity: '1', transform: 'translateY(0)' } },
-              'blink':       { '0%,100%': { opacity: '1' }, '50%': { opacity: '0' } },
-            },
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Consultorio — Asistente de Turnos</title>
+  <meta name="description"
+    content="Agendá tu turno médico con nuestro asistente de inteligencia artificial disponible las 24hs." />
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] },
+          colors: {
+            brand: { DEFAULT: '#06b6d4', dark: '#0891b2', glow: 'rgba(6,182,212,0.2)' },
+          },
+          animation: {
+            'bounce-dot': 'bounce-dot 1.2s ease-in-out infinite',
+            'pulse-ring': 'pulse-ring 1.5s ease-in-out infinite',
+            'msg-in': 'msg-in 0.2s ease both',
+            'blink': 'blink 1s step-end infinite',
+          },
+          keyframes: {
+            'bounce-dot': { '0%,60%,100%': { transform: 'translateY(0)', opacity: '0.4' }, '30%': { transform: 'translateY(-6px)', opacity: '1' } },
+            'pulse-ring': { '0%': { boxShadow: '0 0 0 0 rgba(248,81,73,0.5)' }, '70%': { boxShadow: '0 0 0 10px rgba(248,81,73,0)' }, '100%': { boxShadow: '0 0 0 0 rgba(248,81,73,0)' } },
+            'msg-in': { from: { opacity: '0', transform: 'translateY(6px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+            'blink': { '0%,100%': { opacity: '1' }, '50%': { opacity: '0' } },
           },
         },
-      };
-    </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css?v=3" />
-  </head>
+      },
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css?v=3" />
+</head>
 
-  <body class="h-full bg-slate-950 font-sans antialiased overflow-hidden">
-    <section id="authView" class="hidden h-full items-center justify-center px-4 bg-slate-950">
-      <div class="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
-        <div class="mb-6">
-          <p class="text-xs font-semibold uppercase tracking-wider text-cyan-400">Consultorio</p>
-          <h1 class="mt-2 text-xl font-semibold text-white">Ingresar al asistente</h1>
-          <p class="mt-1 text-sm text-slate-400">Usá tu cuenta para guardar conversaciones y turnos.</p>
-        </div>
-
-        <div class="mb-4 grid grid-cols-2 rounded-xl border border-slate-700 bg-slate-950 p-1">
-          <button id="loginTab" type="button" class="rounded-lg px-3 py-2 text-sm font-medium text-white bg-slate-800">Login</button>
-          <button id="registerTab" type="button" class="rounded-lg px-3 py-2 text-sm font-medium text-slate-400">Registro</button>
-        </div>
-
-        <form id="loginForm" class="space-y-3">
-          <input id="loginEmail" type="email" autocomplete="email" placeholder="Email" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
-          <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Contraseña" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
-          <button type="submit" class="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600">Entrar</button>
-        </form>
-
-        <form id="registerForm" class="hidden space-y-3">
-          <input id="registerFullName" type="text" autocomplete="name" placeholder="Nombre completo" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
-          <input id="registerEmail" type="email" autocomplete="email" placeholder="Email" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
-          <input id="registerDocument" type="text" inputmode="numeric" placeholder="DNI" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
-          <input id="registerPhone" type="tel" autocomplete="tel" placeholder="Teléfono" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
-          <input id="registerPassword" type="password" autocomplete="new-password" placeholder="Contraseña (mínimo 8 caracteres)" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
-          <button type="submit" class="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600">Crear cuenta</button>
-        </form>
-
-        <p id="authStatus" class="mt-4 min-h-[20px] text-sm text-slate-400" role="status"></p>
+<body class="h-full bg-slate-950 font-sans antialiased overflow-hidden">
+  <section id="authView" class="hidden h-full items-center justify-center px-4 bg-slate-950">
+    <div class="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+      <div class="mb-6">
+        <p class="text-xs font-semibold uppercase tracking-wider text-cyan-400">Consultorio</p>
+        <h1 class="mt-2 text-xl font-semibold text-white">Ingresar al asistente</h1>
+        <p class="mt-1 text-sm text-slate-400">Usá tu cuenta para guardar conversaciones y turnos.</p>
       </div>
-    </section>
 
-    <div id="appShell" class="hidden h-full">
+      <div class="mb-4 grid grid-cols-2 rounded-xl border border-slate-700 bg-slate-950 p-1">
+        <button id="loginTab" type="button"
+          class="rounded-lg px-3 py-2 text-sm font-medium text-white bg-slate-800">Login</button>
+        <button id="registerTab" type="button"
+          class="rounded-lg px-3 py-2 text-sm font-medium text-slate-400">Registro</button>
+      </div>
 
-      <!-- ══════════════════════════════════════════════════════
+      <form id="loginForm" class="space-y-3">
+        <input id="loginEmail" type="email" autocomplete="email" placeholder="Email"
+          class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500"
+          required />
+        <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Contraseña"
+          class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500"
+          required />
+        <button type="submit"
+          class="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600">Entrar</button>
+      </form>
+
+      <form id="registerForm" class="hidden space-y-3">
+        <input id="registerFullName" type="text" autocomplete="name" placeholder="Nombre completo"
+          class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500"
+          required />
+        <input id="registerEmail" type="email" autocomplete="email" placeholder="Email"
+          class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500"
+          required />
+        <input id="registerDocument" type="text" inputmode="numeric" placeholder="DNI"
+          class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500"
+          required />
+        <input id="registerPhone" type="tel" autocomplete="tel" placeholder="Teléfono"
+          class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500"
+          required />
+        <input id="registerPassword" type="password" autocomplete="new-password"
+          placeholder="Contraseña (mínimo 8 caracteres)"
+          class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500"
+          required />
+        <button type="submit"
+          class="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600">Crear
+          cuenta</button>
+      </form>
+
+      <p id="authStatus" class="mt-4 min-h-[20px] text-sm text-slate-400" role="status"></p>
+    </div>
+  </section>
+
+  <div id="appShell" class="hidden h-full">
+
+    <!-- ══════════════════════════════════════════════════════
            SIDEBAR
       ══════════════════════════════════════════════════════ -->
-      <aside class="hidden md:flex flex-col w-72 bg-slate-900 border-r border-slate-800 flex-shrink-0">
+    <aside class="hidden md:flex flex-col w-72 bg-slate-900 border-r border-slate-800 flex-shrink-0">
 
-        <!-- Logo -->
-        <div class="flex items-center gap-3 p-6 border-b border-slate-800">
-          <div class="flex-shrink-0 w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path d="M10 3v14M3 10h14" stroke="#06b6d4" stroke-width="2.2" stroke-linecap="round"/>
-            </svg>
-          </div>
+      <!-- Logo -->
+      <div class="flex items-center gap-3 p-6 border-b border-slate-800">
+        <div
+          class="flex-shrink-0 w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M10 3v14M3 10h14" stroke="#06b6d4" stroke-width="2.2" stroke-linecap="round" />
+          </svg>
+        </div>
+        <div>
+          <p class="font-semibold text-white text-base leading-tight">Consultorio</p>
+          <p class="text-xs text-slate-500 mt-0.5">Asistente Virtual</p>
+        </div>
+      </div>
+
+      <div class="px-4 py-4 border-b border-slate-800">
+        <button id="sidebarNewChatBtn" type="button"
+          class="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-700/50 bg-cyan-500/10 px-3 py-2.5 text-sm font-semibold text-cyan-300 hover:bg-cyan-500/15 hover:text-cyan-200 transition-colors">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" aria-hidden="true">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          Nueva consulta
+        </button>
+      </div>
+
+      <nav class="flex flex-col gap-2 px-4 py-4 flex-1 overflow-y-auto" aria-label="Conversaciones recientes">
+        <div class="flex items-center justify-between px-1 mb-1">
+          <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Recientes</p>
+          <p class="text-[11px] text-slate-600">Max. 2</p>
+        </div>
+        <div id="conversationList" class="flex flex-col gap-2"></div>
+        <p id="conversationEmpty" class="hidden px-2 py-3 text-sm text-slate-500">Todavia no hay conversaciones
+          guardadas.</p>
+      </nav>
+
+      <!-- Online status -->
+      <div class="hidden">
+        <span class="relative flex h-2.5 w-2.5 flex-shrink-0">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+        </span>
+        <p class="text-sm text-emerald-400 font-medium">Asistente en línea</p>
+      </div>
+
+      <!-- Info cards -->
+      <nav class="hidden" aria-label="Información del consultorio">
+        <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider px-1 mb-1">Información</p>
+
+        <div
+          class="flex items-start gap-3 p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-slate-600 transition-colors">
+          <span class="text-lg flex-shrink-0 mt-0.5" aria-hidden="true">🕐</span>
           <div>
-            <p class="font-semibold text-white text-base leading-tight">Consultorio</p>
-            <p class="text-xs text-slate-500 mt-0.5">Asistente Virtual</p>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Horario</p>
+            <p class="text-sm text-slate-200 mt-0.5">Lun – Vie · 8:00 – 20:00</p>
           </div>
         </div>
 
-        <!-- Online status -->
-        <div class="flex items-center gap-2.5 mx-5 my-4 px-4 py-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/15">
-          <span class="relative flex h-2.5 w-2.5 flex-shrink-0">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-          </span>
-          <p class="text-sm text-emerald-400 font-medium">Asistente en línea</p>
+        <div
+          class="flex items-start gap-3 p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-slate-600 transition-colors">
+          <span class="text-lg flex-shrink-0 mt-0.5" aria-hidden="true">📍</span>
+          <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Dirección</p>
+            <p class="text-sm text-slate-200 mt-0.5">Av. Corrientes 1234, CABA</p>
+          </div>
         </div>
 
-        <!-- Info cards -->
-        <nav class="flex flex-col gap-2 px-4 flex-1" aria-label="Información del consultorio">
-          <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider px-1 mb-1">Información</p>
-
-          <div class="flex items-start gap-3 p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-slate-600 transition-colors">
-            <span class="text-lg flex-shrink-0 mt-0.5" aria-hidden="true">🕐</span>
-            <div>
-              <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Horario</p>
-              <p class="text-sm text-slate-200 mt-0.5">Lun – Vie · 8:00 – 20:00</p>
-            </div>
+        <div
+          class="flex items-start gap-3 p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-slate-600 transition-colors">
+          <span class="text-lg flex-shrink-0 mt-0.5" aria-hidden="true">📞</span>
+          <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Teléfono</p>
+            <p class="text-sm text-slate-200 mt-0.5">(011) 4321-0000</p>
           </div>
-
-          <div class="flex items-start gap-3 p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-slate-600 transition-colors">
-            <span class="text-lg flex-shrink-0 mt-0.5" aria-hidden="true">📍</span>
-            <div>
-              <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Dirección</p>
-              <p class="text-sm text-slate-200 mt-0.5">Av. Corrientes 1234, CABA</p>
-            </div>
-          </div>
-
-          <div class="flex items-start gap-3 p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-slate-600 transition-colors">
-            <span class="text-lg flex-shrink-0 mt-0.5" aria-hidden="true">📞</span>
-            <div>
-              <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Teléfono</p>
-              <p class="text-sm text-slate-200 mt-0.5">(011) 4321-0000</p>
-            </div>
-          </div>
-
-          <div class="flex items-start gap-3 p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-slate-600 transition-colors">
-            <span class="text-lg flex-shrink-0 mt-0.5" aria-hidden="true">🩺</span>
-            <div>
-              <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Especialidades</p>
-              <p class="text-sm text-slate-200 mt-0.5">Cardiología · Clínica · Pediatría</p>
-            </div>
-          </div>
-        </nav>
-
-        <!-- Footer -->
-        <div class="p-5 border-t border-slate-800">
-          <div class="flex items-center gap-2 text-xs text-slate-600">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-              <circle cx="6" cy="6" r="5.5" stroke="#475569"/>
-              <path d="M6 3v3.5L8 8" stroke="#475569" stroke-linecap="round"/>
-            </svg>
-            <span>Respuestas en tiempo real con IA</span>
-          </div>
-          <p class="text-xs text-slate-700 mt-1">Powered by LangGraph + Groq</p>
         </div>
-      </aside>
 
-      <!-- ══════════════════════════════════════════════════════
+        <div
+          class="flex items-start gap-3 p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-slate-600 transition-colors">
+          <span class="text-lg flex-shrink-0 mt-0.5" aria-hidden="true">🩺</span>
+          <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Especialidades</p>
+            <p class="text-sm text-slate-200 mt-0.5">Cardiología · Clínica · Pediatría</p>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Footer -->
+      <div class="p-5 border-t border-slate-800">
+        <div class="flex items-center gap-2 text-xs text-slate-600">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <circle cx="6" cy="6" r="5.5" stroke="#475569" />
+            <path d="M6 3v3.5L8 8" stroke="#475569" stroke-linecap="round" />
+          </svg>
+          <span>Respuestas en tiempo real con IA</span>
+        </div>
+        <p class="text-xs text-slate-700 mt-1">Powered by LangGraph + Groq</p>
+      </div>
+    </aside>
+
+    <!-- ══════════════════════════════════════════════════════
            CHAT PANEL
       ══════════════════════════════════════════════════════ -->
-      <main class="flex flex-col flex-1 min-w-0 bg-slate-950" role="main">
+    <main class="flex flex-col flex-1 min-w-0 bg-slate-950" role="main">
 
-        <!-- Chat header -->
-        <header class="flex items-center justify-between gap-4 px-6 py-4 bg-slate-900 border-b border-slate-800 flex-shrink-0">
-          <div class="flex items-center gap-3">
-            <!-- Avatar -->
-            <div class="relative flex-shrink-0">
-              <div class="w-10 h-10 rounded-full bg-brand/10 border border-brand/30 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.15)]">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#06b6d4" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-                  <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-                </svg>
-              </div>
-              <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-900"></span>
+      <!-- Chat header -->
+      <header
+        class="flex items-center justify-between gap-4 px-6 py-4 bg-slate-900 border-b border-slate-800 flex-shrink-0">
+        <div class="flex items-center gap-3">
+          <!-- Avatar -->
+          <div class="relative flex-shrink-0">
+            <div
+              class="w-10 h-10 rounded-full bg-brand/10 border border-brand/30 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#06b6d4" stroke-width="1.8"
+                stroke-linecap="round" aria-hidden="true">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+              </svg>
             </div>
-            <div>
-              <h1 class="text-base font-semibold text-white leading-tight">Asistente de Turnos</h1>
-              <p class="text-xs text-slate-500" id="headerSubtitle">Respondiendo en tiempo real</p>
-              <!-- Indicador de llamada activa (oculto por defecto) -->
-              <p id="callStatus" class="hidden text-xs text-red-400 flex items-center gap-1.5 mt-0.5">
-                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0"></span>
-                En llamada
-              </p>
-            </div>
+            <span
+              class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-900"></span>
           </div>
+          <div>
+            <h1 class="text-base font-semibold text-white leading-tight">Asistente de Turnos</h1>
+            <p class="text-xs text-slate-500" id="headerSubtitle">Respondiendo en tiempo real</p>
+            <!-- Indicador de llamada activa (oculto por defecto) -->
+            <p id="callStatus" class="hidden text-xs text-red-400 flex items-center gap-1.5 mt-0.5">
+              <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0"></span>
+              En llamada
+            </p>
+          </div>
+        </div>
 
-          <div class="flex items-center gap-3">
-            <div class="hidden sm:block text-right">
-              <p id="userNameLabel" class="text-xs font-medium text-slate-300"></p>
-              <p id="userEmailLabel" class="text-[11px] text-slate-500"></p>
-            </div>
-            <button id="logoutBtn" class="text-xs font-medium text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 bg-slate-800/50 hover:bg-slate-700 transition-colors" type="button">
-              Salir
-            </button>
-            <!-- Call Button -->
-            <button id="callBtn"
-              class="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors
+        <div class="flex items-center gap-3">
+          <div class="hidden sm:block text-right">
+            <p id="userNameLabel" class="text-xs font-medium text-slate-300"></p>
+            <p id="userEmailLabel" class="text-[11px] text-slate-500"></p>
+          </div>
+          <button id="logoutBtn"
+            class="text-xs font-medium text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 bg-slate-800/50 hover:bg-slate-700 transition-colors"
+            type="button">
+            Salir
+          </button>
+          <!-- Call Button -->
+          <button id="callBtn" class="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors
                      text-emerald-400 border-emerald-700/50 bg-emerald-900/20 hover:bg-emerald-900/40"
-              title="Iniciar llamada de voz con el asistente"
-              aria-label="Iniciar llamada">
-              <!-- Phone icon -->
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.14 12 19.79 19.79 0 0 1 1.08 3.4 2 2 0 0 1 3.05 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-              </svg>
-              <span id="callBtnLabel">Llamar</span>
-            </button>
+            title="Iniciar llamada de voz con el asistente" aria-label="Iniciar llamada">
+            <!-- Phone icon -->
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path
+                d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.14 12 19.79 19.79 0 0 1 1.08 3.4 2 2 0 0 1 3.05 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+            </svg>
+            <span id="callBtnLabel">Llamar</span>
+          </button>
 
-            <!-- New Chat Button -->
-            <button id="newChatBtn" class="flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 bg-slate-800/50 hover:bg-slate-700 transition-colors" title="Limpiar historial y empezar de nuevo">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-              Nueva
-            </button>
+          <!-- New Chat Button -->
+          <button id="newChatBtn"
+            class="flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 bg-slate-800/50 hover:bg-slate-700 transition-colors"
+            title="Limpiar historial y empezar de nuevo">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Nueva
+          </button>
 
-            <!-- TTS Toggle -->
-            <label class="flex items-center gap-2.5 cursor-pointer select-none group" title="Leer respuestas en voz alta">
-              <input id="ttsToggle" type="checkbox" class="sr-only peer" />
-              <div class="relative w-9 h-5 rounded-full bg-slate-700 border border-slate-600 peer-checked:bg-brand peer-checked:border-brand transition-all duration-200 peer-focus-visible:ring-2 peer-focus-visible:ring-brand/50">
-                <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 peer-checked:translate-x-4 group-[]:peer-checked:translate-x-4"></div>
-              </div>
-              <span class="text-xs text-slate-400">Voz</span>
-            </label>
+          <!-- TTS toggle removed: voz manejada via boton Llamar -->
+          <input id="ttsToggle" type="checkbox" class="sr-only" aria-hidden="true" tabindex="-1" />
+        </div>
+      </header>
+
+      <!-- Messages -->
+      <section id="messages" class="flex-1 overflow-y-auto p-6 flex flex-col gap-4 scroll-smooth" aria-live="polite"
+        aria-label="Conversación" style="scrollbar-width: thin; scrollbar-color: #334155 transparent;"></section>
+
+      <!-- Typing indicator -->
+      <div id="typingIndicator" class="hidden px-6 pb-2" aria-hidden="true">
+        <div class="flex items-center gap-3">
+          <div
+            class="flex items-center gap-1.5 px-4 py-3 bg-slate-800 border border-slate-700 rounded-2xl rounded-bl-sm">
+            <span class="w-2 h-2 rounded-full bg-slate-400 animate-bounce-dot [animation-delay:0ms]"></span>
+            <span class="w-2 h-2 rounded-full bg-slate-400 animate-bounce-dot [animation-delay:200ms]"></span>
+            <span class="w-2 h-2 rounded-full bg-slate-400 animate-bounce-dot [animation-delay:400ms]"></span>
           </div>
-        </header>
+          <p class="text-xs text-slate-500">El asistente está escribiendo…</p>
+        </div>
+      </div>
 
-        <!-- Messages -->
-        <section
-          id="messages"
-          class="flex-1 overflow-y-auto p-6 flex flex-col gap-4 scroll-smooth"
-          aria-live="polite"
-          aria-label="Conversación"
-          style="scrollbar-width: thin; scrollbar-color: #334155 transparent;"
-        ></section>
+      <!-- Status bar + Composer -->
+      <div class="px-4 pb-4 pt-2 flex-shrink-0 bg-slate-950">
+        <p id="statusBar" class="text-xs text-slate-500 px-2 pb-2 min-h-[20px]" role="status" aria-live="polite"></p>
 
-        <!-- Typing indicator -->
-        <div id="typingIndicator" class="hidden px-6 pb-2" aria-hidden="true">
-          <div class="flex items-center gap-3">
-            <div class="flex items-center gap-1.5 px-4 py-3 bg-slate-800 border border-slate-700 rounded-2xl rounded-bl-sm">
-              <span class="w-2 h-2 rounded-full bg-slate-400 animate-bounce-dot [animation-delay:0ms]"></span>
-              <span class="w-2 h-2 rounded-full bg-slate-400 animate-bounce-dot [animation-delay:200ms]"></span>
-              <span class="w-2 h-2 rounded-full bg-slate-400 animate-bounce-dot [animation-delay:400ms]"></span>
-            </div>
-            <p class="text-xs text-slate-500">El asistente está escribiendo…</p>
-          </div>
+        <!-- Panel de llamada (oculto por defecto, visible durante la llamada) -->
+        <div id="callPanel" class="hidden items-center justify-center gap-4 py-3">
+          <!-- Botón push-to-talk -->
+          <button id="speakBtn" type="button" aria-label="Hablar ahora" title="Presá para hablar" class="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold border-2 transition-all duration-150 active:scale-95
+                     text-slate-400 border-slate-600 bg-slate-800 hover:border-slate-500" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="22" />
+            </svg>
+            <span id="speakBtnLabel">Esperando…</span>
+          </button>
         </div>
 
-        <!-- Status bar + Composer -->
-        <div class="px-4 pb-4 pt-2 flex-shrink-0 bg-slate-950">
-          <p id="statusBar" class="text-xs text-slate-500 px-2 pb-2 min-h-[20px]" role="status" aria-live="polite"></p>
+        <form id="chatForm"
+          class="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-2xl px-2 py-2 focus-within:border-brand/50 focus-within:shadow-[0_0_0_3px_rgba(6,182,212,0.1)] transition-all duration-200"
+          autocomplete="off">
 
-          <!-- Panel de llamada (oculto por defecto, visible durante la llamada) -->
-          <div id="callPanel" class="hidden items-center justify-center gap-4 py-3">
-            <!-- Botón push-to-talk -->
-            <button
-              id="speakBtn"
-              type="button"
-              aria-label="Hablar ahora"
-              title="Presá para hablar"
-              class="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold border-2 transition-all duration-150 active:scale-95
-                     text-slate-400 border-slate-600 bg-slate-800 hover:border-slate-500"
-              disabled
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                <line x1="12" y1="19" x2="12" y2="22"/>
-              </svg>
-              <span id="speakBtnLabel">Esperando…</span>
-            </button>
-          </div>
+          <!-- Mic button -->
+          <button id="voiceButton" type="button" aria-label="Activar micrófono" title="Hablar con el asistente"
+            class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-slate-400 bg-slate-700 hover:bg-slate-600 hover:text-white transition-all duration-150 active:scale-95">
+            <svg id="micIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="22" />
+              <line x1="8" y1="22" x2="16" y2="22" />
+            </svg>
+          </button>
 
-          <form id="chatForm" class="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-2xl px-2 py-2 focus-within:border-brand/50 focus-within:shadow-[0_0_0_3px_rgba(6,182,212,0.1)] transition-all duration-200" autocomplete="off">
+          <!-- Input -->
+          <input id="messageInput" type="text"
+            class="flex-1 bg-transparent border-none outline-none text-slate-200 placeholder-slate-500 text-sm py-2 px-1 min-w-0"
+            placeholder="Escribí tu consulta o usá el micrófono…" maxlength="2000"
+            aria-label="Mensaje para el asistente" />
 
-            <!-- Mic button -->
-            <button
-              id="voiceButton"
-              type="button"
-              aria-label="Activar micrófono"
-              title="Hablar con el asistente"
-              class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-slate-400 bg-slate-700 hover:bg-slate-600 hover:text-white transition-all duration-150 active:scale-95"
-            >
-              <svg id="micIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                <line x1="12" y1="19" x2="12" y2="22"/>
-                <line x1="8" y1="22" x2="16" y2="22"/>
-              </svg>
-            </button>
+          <!-- Send button -->
+          <button id="sendButton" type="submit" aria-label="Enviar mensaje" title="Enviar"
+            class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center bg-brand text-white hover:bg-brand-dark transition-all duration-150 active:scale-95 shadow-[0_0_12px_rgba(6,182,212,0.3)] hover:shadow-[0_0_18px_rgba(6,182,212,0.5)]">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+          </button>
 
-            <!-- Input -->
-            <input
-              id="messageInput"
-              type="text"
-              class="flex-1 bg-transparent border-none outline-none text-slate-200 placeholder-slate-500 text-sm py-2 px-1 min-w-0"
-              placeholder="Escribí tu consulta o usá el micrófono…"
-              maxlength="2000"
-              aria-label="Mensaje para el asistente"
-            />
+        </form>
+      </div>
+    </main>
+  </div>
 
-            <!-- Send button -->
-            <button
-              id="sendButton"
-              type="submit"
-              aria-label="Enviar mensaje"
-              title="Enviar"
-              class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center bg-brand text-white hover:bg-brand-dark transition-all duration-150 active:scale-95 shadow-[0_0_12px_rgba(6,182,212,0.3)] hover:shadow-[0_0_18px_rgba(6,182,212,0.5)]"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <line x1="22" y1="2" x2="11" y2="13"/>
-                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-              </svg>
-            </button>
+    <script src="/app.js?v=23"></script>
+</body>
 
-          </form>
-        </div>
-      </main>
-    </div>
-
-    <script src="/app.js?v=12"></script>
-  </body>
 </html>

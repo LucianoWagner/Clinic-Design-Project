@@ -69,3 +69,39 @@ def _extract_elevenlabs_error(response: httpx.Response) -> str:
     if isinstance(detail, str) and detail:
         return detail
     return fallback
+
+
+# ── Extracción del texto de voz ───────────────────────────────────────────────
+import re as _re  # noqa: E402
+
+_LIST_START = _re.compile(
+    r"\n\s*[-*•]\s"          # - item  /  * item  /  • item
+    r"|\n\s*\d+[.)]\s"       # 1. item / 2) item
+    r"|\n\s*\n"              # línea en blanco entre párrafos (precede a listas)
+    r"|\n\s*\*\*[^*]+\*\*",  # **Encabezado** de sección Markdown
+    _re.MULTILINE,
+)
+
+_MAX_VOICE_CHARS = 400  # ElevenLabs cobra por caracter; acotar respuestas largas
+
+
+def extract_spoken_text(full_text: str) -> str:
+    """
+    Devuelve solo la parte conversacional del texto, apta para síntesis de voz.
+
+    - Sin listas: devuelve el texto completo (truncado si supera el límite).
+    - Con listas: devuelve solo el párrafo introductorio antes de la primera lista,
+      que es el resumen que el agente formula antes de listar los datos.
+    """
+    if not full_text:
+        return ""
+
+    match = _LIST_START.search(full_text)
+    spoken = full_text[: match.start()].strip() if match else full_text.strip()
+
+    if len(spoken) > _MAX_VOICE_CHARS:
+        truncated = spoken[:_MAX_VOICE_CHARS]
+        last_end = max(truncated.rfind("."), truncated.rfind("!"), truncated.rfind("?"))
+        spoken = truncated[: last_end + 1] if last_end > 0 else truncated
+
+    return spoken
