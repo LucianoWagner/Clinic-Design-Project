@@ -2168,18 +2168,132 @@ callBtn?.addEventListener("click", async () => {
 /* â”€â”€â”€ Initial Greeting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 addMessage(
-
   "assistant",
-
   "¡Hola! 👋 Soy el asistente virtual del consultorio.\n\n" +
-
   "Podés escribirme o presionar 📞 Llamar para hablar directamente. " +
-
   "¿Con qué especialidad o médico querés consultar?"
-
 );
-
-
 
 initAuth();
 
+/* ─── Appointments View Logic ────────────────────────────────────────────── */
+
+const userDropdownContainer = $("userDropdownContainer");
+const userDropdownBtn = $("userDropdownBtn");
+const userDropdownMenu = $("userDropdownMenu");
+const viewAppointmentsBtn = $("viewAppointmentsBtn");
+const appointmentsView = $("appointmentsView");
+const backToChatBtn = $("backToChatBtn");
+const appointmentsList = $("appointmentsList");
+const appointmentFilters = document.querySelectorAll(".appointment-filter");
+const chatComposerArea = $("chatComposerArea");
+
+let userAppointments = [];
+let currentAppointmentFilter = 'all';
+
+userDropdownBtn?.addEventListener("click", () => {
+  userDropdownMenu?.classList.toggle("hidden");
+});
+
+document.addEventListener("click", (e) => {
+  if (userDropdownContainer && !userDropdownContainer.contains(e.target)) {
+    userDropdownMenu?.classList.add("hidden");
+  }
+});
+
+function showAppointmentsView() {
+  userDropdownMenu?.classList.add("hidden");
+  messagesEl?.classList.add("hidden");
+  chatComposerArea?.classList.add("hidden");
+  appointmentsView?.classList.remove("hidden");
+  appointmentsView?.classList.add("flex");
+  loadAppointments();
+}
+
+function hideAppointmentsView() {
+  appointmentsView?.classList.add("hidden");
+  appointmentsView?.classList.remove("flex");
+  messagesEl?.classList.remove("hidden");
+  chatComposerArea?.classList.remove("hidden");
+}
+
+viewAppointmentsBtn?.addEventListener("click", showAppointmentsView);
+backToChatBtn?.addEventListener("click", hideAppointmentsView);
+
+async function loadAppointments() {
+  if (!appointmentsList) return;
+  appointmentsList.innerHTML = '<p class="text-slate-400 text-sm">Cargando turnos...</p>';
+  try {
+    const res = await authFetch("/api/appointments/me");
+    if (!res.ok) throw new Error("Error al cargar turnos");
+    userAppointments = await res.json();
+    renderAppointments();
+  } catch (err) {
+    appointmentsList.innerHTML = `<p class="text-red-400 text-sm">${err.message}</p>`;
+  }
+}
+
+function renderAppointments() {
+  if (!appointmentsList) return;
+  appointmentsList.innerHTML = "";
+  const filtered = userAppointments.filter(app => {
+    if (currentAppointmentFilter === "all") return true;
+    return app.status === currentAppointmentFilter;
+  });
+
+  if (filtered.length === 0) {
+    appointmentsList.innerHTML = '<p class="text-slate-400 text-sm py-4">No se encontraron turnos.</p>';
+    return;
+  }
+
+  filtered.forEach(app => {
+    const date = new Date(app.starts_at).toLocaleString("es-AR", {
+      weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
+    });
+    
+    let statusColor = "bg-slate-700 text-slate-300";
+    let statusLabel = app.status;
+    if (app.status === "confirmed") {
+        statusColor = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+        statusLabel = "Confirmado";
+    } else if (app.status === "cancelled") {
+        statusColor = "bg-rose-500/10 text-rose-400 border-rose-500/20";
+        statusLabel = "Cancelado";
+    } else if (app.status === "finished") {
+        statusColor = "bg-slate-500/10 text-slate-400 border-slate-500/20";
+        statusLabel = "Finalizado";
+    }
+
+    const card = document.createElement("div");
+    card.className = "p-4 rounded-xl border border-slate-700 bg-slate-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4";
+    card.innerHTML = `
+      <div>
+        <p class="font-semibold text-slate-200">${app.doctor_name}</p>
+        <p class="text-sm text-cyan-400">${app.specialty_name}</p>
+        <div class="flex items-center gap-2 mt-2 text-sm text-slate-400">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+          <span class="capitalize">${date}</span>
+        </div>
+      </div>
+      <div class="flex-shrink-0">
+        <span class="px-3 py-1 text-xs font-medium border rounded-full ${statusColor}">
+          ${statusLabel}
+        </span>
+      </div>
+    `;
+    appointmentsList.appendChild(card);
+  });
+}
+
+appointmentFilters.forEach(btn => {
+  btn.addEventListener("click", (e) => {
+    appointmentFilters.forEach(b => b.classList.remove("active", "bg-slate-700", "text-white"));
+    appointmentFilters.forEach(b => b.classList.add("text-slate-400"));
+    
+    e.target.classList.remove("text-slate-400");
+    e.target.classList.add("active", "bg-slate-700", "text-white");
+    
+    currentAppointmentFilter = e.target.dataset.filter;
+    renderAppointments();
+  });
+});

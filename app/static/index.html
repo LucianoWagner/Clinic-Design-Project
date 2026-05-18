@@ -233,15 +233,28 @@
         </div>
 
         <div class="flex items-center gap-3">
-          <div class="hidden sm:block text-right">
-            <p id="userNameLabel" class="text-xs font-medium text-slate-300"></p>
-            <p id="userEmailLabel" class="text-[11px] text-slate-500"></p>
+          <div class="relative inline-block text-left" id="userDropdownContainer">
+            <button id="userDropdownBtn" type="button" class="flex items-center gap-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-800/50 px-2 py-1.5 transition-all">
+              <div class="hidden sm:block text-right">
+                <p id="userNameLabel" class="text-xs font-medium text-slate-300"></p>
+                <p id="userEmailLabel" class="text-[11px] text-slate-500"></p>
+              </div>
+              <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+            </button>
+            <div id="userDropdownMenu" class="hidden absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-xl bg-slate-800 border border-slate-700 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] overflow-hidden">
+              <div class="py-1">
+                <button id="viewAppointmentsBtn" class="w-full text-left px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors flex items-center gap-2">
+                  <svg class="w-4 h-4 text-cyan-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                  Ver tu historial de turnos
+                </button>
+                <div class="border-t border-slate-700"></div>
+                <button id="logoutBtn" class="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-slate-700 hover:text-red-300 transition-colors flex items-center gap-2">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                  Salir
+                </button>
+              </div>
+            </div>
           </div>
-          <button id="logoutBtn"
-            class="text-xs font-medium text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 bg-slate-800/50 hover:bg-slate-700 transition-colors"
-            type="button">
-            Salir
-          </button>
           <!-- Call Button -->
           <button id="callBtn" class="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors
                      text-emerald-400 border-emerald-700/50 bg-emerald-900/20 hover:bg-emerald-900/40"
@@ -276,6 +289,32 @@
       <section id="messages" class="flex-1 overflow-y-auto p-6 flex flex-col gap-4 scroll-smooth" aria-live="polite"
         aria-label="Conversación" style="scrollbar-width: thin; scrollbar-color: #334155 transparent;"></section>
 
+      <!-- Appointments View -->
+      <section id="appointmentsView" class="hidden flex-1 overflow-y-auto p-6 flex-col gap-6" style="scrollbar-width: thin; scrollbar-color: #334155 transparent;">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+          <div>
+            <h2 class="text-xl font-semibold text-white">Mis Turnos</h2>
+            <p class="text-sm text-slate-400 mt-1">Historial de tus reservas médicas</p>
+          </div>
+          <button id="backToChatBtn" class="flex items-center gap-2 text-sm font-medium text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 px-3 py-2 rounded-xl transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+            Volver al chat
+          </button>
+        </div>
+        
+        <!-- Filters -->
+        <div class="flex items-center gap-2 mb-2 bg-slate-900/50 p-1 rounded-xl w-fit border border-slate-800">
+          <button class="appointment-filter active px-4 py-1.5 text-sm font-medium rounded-lg bg-slate-700 text-white shadow-sm transition" data-filter="all">Todos</button>
+          <button class="appointment-filter px-4 py-1.5 text-sm font-medium rounded-lg text-slate-400 hover:text-white transition" data-filter="confirmed">Confirmados</button>
+          <button class="appointment-filter px-4 py-1.5 text-sm font-medium rounded-lg text-slate-400 hover:text-white transition" data-filter="finished">Finalizados</button>
+          <button class="appointment-filter px-4 py-1.5 text-sm font-medium rounded-lg text-slate-400 hover:text-white transition" data-filter="cancelled">Cancelados</button>
+        </div>
+
+        <div id="appointmentsList" class="flex flex-col gap-4">
+          <!-- Turnos dinámicos -->
+        </div>
+      </section>
+
       <!-- Typing indicator -->
       <div id="typingIndicator" class="hidden px-6 pb-2" aria-hidden="true">
         <div class="flex items-center gap-3">
@@ -290,7 +329,7 @@
       </div>
 
       <!-- Status bar + Composer -->
-      <div class="px-4 pb-4 pt-2 flex-shrink-0 bg-slate-950">
+      <div id="chatComposerArea" class="px-4 pb-4 pt-2 flex-shrink-0 bg-slate-950">
         <p id="statusBar" class="text-xs text-slate-500 px-2 pb-2 min-h-[20px]" role="status" aria-live="polite"></p>
 
         <!-- Panel de llamada (oculto por defecto, visible durante la llamada) -->
@@ -345,7 +384,6 @@
     </main>
   </div>
 
-    <script src="/app.js?v=24"></script>
+    <script src="/app.js?v=25"></script>
 </body>
-
 </html>

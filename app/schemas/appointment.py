@@ -58,3 +58,13 @@ class HoldSlotToolInput(BaseModel):
 class ConfirmAppointmentToolInput(BaseModel):
     slot_id: Optional[int] = None
     explicit_confirmation: bool
+
+
+class UserAppointmentRead(BaseModel):
+    id: int
+    doctor_name: str
+    specialty_name: str
+    starts_at: datetime
+    ends_at: datetime
+    status: str
+    confirmed_at: datetime
