@@ -14,6 +14,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi_limiter import FastAPILimiter
+import redis.asyncio as redis
 
 from app.api.routes import appointments, auth, conversations, health, speech, tts
 from app.core.config import settings
@@ -25,6 +27,9 @@ configure_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Inicializa y cierra el checkpointer de LangGraph."""
+    redis_client = redis.from_url(settings.redis_url, encoding="utf-8", decode_responses=True)
+    await FastAPILimiter.init(redis_client)
+
     if settings.database_url.startswith("postgresql"):
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 

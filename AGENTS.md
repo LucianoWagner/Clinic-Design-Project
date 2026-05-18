@@ -186,3 +186,12 @@ Tools disponibles:
   1. **Prompt preventivo:** El LLM siempre antepone un resumen verbal de máximo 2 oraciones antes de enlistar.
   2. **Barrera de backend (`tts_text`):** Durante el modo llamada, el websocket solo envía al frontend el texto resumido (`extract_spoken_text` en `tts_service.py`), filtrando el contenido estructurado (listas, markdown).
   - El resultado es que **el chat muestra el texto completo**, pero **el TTS solo reproduce la introducción conversacional**.
+
+### Fase 4.5 (Completada) - Rate Limiting y UX del Historial
+- **Borrado manual de conversaciones**: Se agregó un ícono de eliminar en cada ítem del historial del sidebar del frontend (`app.js`). Esto invoca el endpoint `DELETE /api/conversations/{id}` (protegido por JWT) y limpia la UI localmente.
+- **Control de Costos (Rate Limiting)**: Para proteger la facturación de la API del LLM (Groq) y TTS (ElevenLabs) frente a abusos o bots:
+  - Se agregó **Redis** (`redis:7-alpine`) al `docker-compose.yml` para gestionar en memoria los contadores.
+  - **REST API**: Se integró `fastapi-limiter`. Se aplicó `@RateLimiter` como dependencia:
+    - `POST /api/conversations/{id}/messages`: Límite de 10 requests por minuto.
+    - `POST /api/tts`: Límite de 20 requests por minuto.
+  - **WebSocket**: Como el limiter HTTP no se aplica a conexiones persistentes, se implementó un limitador in-memory (`message_count`) dentro del loop del `conversation_ws` que cierra el socket (código `1008`) si el usuario supera los 100 mensajes por sesión.

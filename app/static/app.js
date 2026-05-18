@@ -265,45 +265,49 @@ function renderConversationList() {
 
 
   conversations.forEach((conversation) => {
+    const container = document.createElement("div");
+    container.className = "relative group";
 
     const button = document.createElement("button");
-
     button.type = "button";
-
     button.dataset.conversationId = conversation.id;
-
     const selected = String(conversation.id) === String(conversationId);
-
     button.className = [
-
-      "w-full text-left rounded-xl border px-3 py-3 transition-colors",
-
+      "w-full text-left rounded-xl border px-3 py-3 transition-colors pr-9",
       selected
-
         ? "bg-cyan-500/10 border-cyan-600/50 text-slate-100"
-
         : "bg-slate-800/50 border-slate-700/60 text-slate-300 hover:border-slate-600 hover:bg-slate-800",
-
     ].join(" ");
-
     button.innerHTML = `
-
       <div class="flex items-start justify-between gap-2">
-
         <span class="min-w-0 flex-1 truncate text-sm font-medium">${_escapeHtml(conversation.title || "Nueva consulta")}</span>
-
         <span class="flex-shrink-0 text-[10px] text-slate-500">${_escapeHtml(_formatConversationTime(conversation.updated_at))}</span>
-
       </div>
-
       <p class="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">${_escapeHtml(conversation.preview || "Sin mensajes todavia")}</p>
-
     `;
-
     button.addEventListener("click", () => selectConversation(conversation.id));
 
-    conversationList.appendChild(button);
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "absolute top-2 right-2 p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all";
+    deleteBtn.title = "Eliminar conversación";
+    deleteBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6h18"></path>
+        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+      </svg>
+    `;
+    deleteBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (confirm("¿Estás seguro de que querés eliminar esta conversación?")) {
+        await deleteConversation(conversation.id);
+      }
+    });
 
+    container.appendChild(button);
+    container.appendChild(deleteBtn);
+    conversationList.appendChild(container);
   });
 
 }
@@ -459,6 +463,25 @@ async function loadConversationMessages(id) {
 }
 
 
+
+async function deleteConversation(id) {
+  try {
+    const res = await authFetch(`/api/conversations/${id}`, { method: "DELETE" });
+    if (!res.ok && res.status !== 204) throw new Error("No se pudo eliminar la conversación");
+    
+    conversations = conversations.filter(c => String(c.id) !== String(id));
+    
+    if (String(id) === String(conversationId)) {
+      _clearConversationId();
+      renderInitialGreeting();
+    }
+    
+    renderConversationList();
+  } catch (err) {
+    console.error(err);
+    setStatus("Error al eliminar conversación", "error");
+  }
+}
 
 async function selectConversation(id) {
 

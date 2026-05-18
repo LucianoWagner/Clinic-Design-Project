@@ -3,6 +3,7 @@ from contextlib import contextmanager
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, status
+from fastapi_limiter.depends import RateLimiter
 from sqlmodel import Session, select
 
 from app.agents.orchestrator import ConversationOrchestrator
@@ -82,7 +83,11 @@ async def delete_conversation(
     session.commit()
 
 
-@router.post("/conversations/{conversation_id}/messages", response_model=MessageRead)
+@router.post(
+    "/conversations/{conversation_id}/messages",
+    response_model=MessageRead,
+    dependencies=[Depends(RateLimiter(times=10, seconds=60))]
+)
 async def post_message(
     conversation_id: int,
     payload: MessageCreate,
@@ -121,8 +126,15 @@ async def conversation_ws(websocket: WebSocket, conversation_id: int) -> None:
                 await websocket.close(code=1008)
                 return
 
+        message_count = 0
         while True:
             payload = await websocket.receive_json()
+            message_count += 1
+            if message_count > 100:
+                await websocket.send_json({"type": "error", "message": "Limite de mensajes alcanzado en esta sesion."})
+                await websocket.close(code=1008)
+                return
+
             text = payload.get("text", "")
             input_mode = payload.get("input_mode", "voice")
 

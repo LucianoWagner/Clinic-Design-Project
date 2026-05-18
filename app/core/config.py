@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     app_name: str = "Consultorio Agent"
     environment: str = "development"
     database_url: str = "sqlite:///./consultorio.db"
+    redis_url: str = "redis://redis:6379/0"
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
     hold_ttl_seconds: int = 300
