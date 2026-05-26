@@ -3,6 +3,8 @@ from typing import Optional
 
 from sqlmodel import Field, SQLModel
 
+from app.models.enums import UserRole
+
 
 def utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
@@ -17,6 +19,7 @@ class User(SQLModel, table=True):
     document_number: str = Field(index=True, unique=True, max_length=40)
     phone: str = Field(index=True, max_length=40)
     password_hash: str = Field(max_length=255)
+    role: str = Field(default=UserRole.patient.value, index=True)
     is_active: bool = Field(default=True, index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

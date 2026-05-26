@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi_limiter import FastAPILimiter
 import redis.asyncio as redis
 
-from app.api.routes import appointments, auth, conversations, health, speech, tts
+from app.api.routes import appointments, auth, conversations, doctor, health, speech, tts
 from app.core.config import settings
 from app.core.logging import configure_logging
 
@@ -61,6 +61,7 @@ app.include_router(health.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(conversations.router, prefix="/api")
 app.include_router(appointments.router, prefix="/api")
+app.include_router(doctor.router, prefix="/api")
 app.include_router(speech.router, prefix="/api")
 app.include_router(tts.router, prefix="/api")
 

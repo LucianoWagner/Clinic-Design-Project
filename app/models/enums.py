@@ -1,9 +1,16 @@
 from enum import StrEnum
 
 
+class UserRole(StrEnum):
+    patient = "patient"
+    doctor = "doctor"
+    admin = "admin"
+
+
 class AppointmentStatus(StrEnum):
     confirmed = "confirmed"
     cancelled = "cancelled"
+    finished = "finished"
 
 
 class Channel(StrEnum):

@@ -19,5 +19,6 @@ class Doctor(SQLModel, table=True):
     full_name: str = Field(index=True, max_length=160)
     specialty_id: int = Field(foreign_key="specialties.id", index=True)
     license_number: str = Field(max_length=80)
+    user_id: Optional[int] = Field(default=None, foreign_key="users.id", unique=True, index=True)
     is_active: bool = Field(default=True)
     specialty: Specialty = Relationship(back_populates="doctors")

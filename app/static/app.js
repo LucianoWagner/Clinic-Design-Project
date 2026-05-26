@@ -240,11 +240,17 @@ function renderMessages(messages) {
 
 
 
+function parseApiDate(dateStr) {
+  if (!dateStr) return null;
+  if (dateStr instanceof Date) return dateStr;
+  return new Date(dateStr);
+}
+
 function _formatConversationTime(value) {
 
   if (!value) return "";
 
-  const date = new Date(value);
+  const date = parseApiDate(value);
 
   if (Number.isNaN(date.getTime())) return "";
 
@@ -555,8 +561,9 @@ function showAuth() {
 
 
 
-function showApp() {
 
+
+function showApp() {
   authView?.classList.add("hidden");
 
   authView?.classList.remove("flex");
@@ -566,6 +573,18 @@ function showApp() {
   appShell?.classList.add("flex");
 
   if (userNameLabel) userNameLabel.textContent = currentUser?.full_name ?? "";
+
+  const doctorShell = $("doctorShell");
+  if (currentUser?.role === "doctor") {
+    appShell?.classList.add("hidden");
+    appShell?.classList.remove("flex");
+    doctorShell?.classList.remove("hidden");
+    doctorShell?.classList.add("flex");
+    doctorPortal.init();
+  } else {
+    doctorShell?.classList.add("hidden");
+    doctorShell?.classList.remove("flex");
+  }
 
   if (userEmailLabel) userEmailLabel.textContent = currentUser?.email ?? "";
 
@@ -634,6 +653,9 @@ function logout() {
   renderConversationList();
 
   messagesEl && (messagesEl.innerHTML = "");
+  const doctorShell = $("doctorShell");
+  doctorShell?.classList.add("hidden");
+  doctorShell?.classList.remove("flex");
 
   showAuth();
 
@@ -2174,7 +2196,7 @@ addMessage(
   "¿Con qué especialidad o médico querés consultar?"
 );
 
-initAuth();
+
 
 /* ─── Appointments View Logic ────────────────────────────────────────────── */
 
@@ -2247,7 +2269,7 @@ function renderAppointments() {
   }
 
   filtered.forEach(app => {
-    const date = new Date(app.starts_at).toLocaleString("es-AR", {
+    const date = parseApiDate(app.starts_at).toLocaleString("es-AR", {
       weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
     });
     
@@ -2297,3 +2319,374 @@ appointmentFilters.forEach(btn => {
     renderAppointments();
   });
 });
+
+
+// ===================================================================
+// Doctor Portal Module
+// ===================================================================
+const doctorPortal = {
+  activeTab: "appointments", // or slots
+  appointments: [],
+  slots: [],
+  currentFilter: "all",
+  isInitialized: false,
+
+  init() {
+    // Show user info
+    const nameLabel = $("doctorNameLabel");
+    const emailLabel = $("doctorEmailLabel");
+    if (nameLabel) nameLabel.textContent = currentUser?.full_name ?? "Médico";
+    if (emailLabel) emailLabel.textContent = currentUser?.email ?? "";
+
+    if (this.isInitialized) {
+      this.switchTab(this.activeTab);
+      return;
+    }
+
+    // Setup tab listeners
+    $("doctorTabAppointments")?.addEventListener("click", () => this.switchTab("appointments"));
+    $("doctorTabSlots")?.addEventListener("click", () => this.switchTab("slots"));
+    $("doctorLogoutBtn")?.addEventListener("click", () => logout());
+
+    // Setup filter listeners
+    document.querySelectorAll(".doctor-app-filter").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        document.querySelectorAll(".doctor-app-filter").forEach(b => {
+          b.classList.remove("active", "bg-slate-800", "text-white", "shadow-sm");
+          b.classList.add("text-slate-400");
+        });
+        e.target.classList.remove("text-slate-400");
+        e.target.classList.add("active", "bg-slate-800", "text-white", "shadow-sm");
+        this.currentFilter = e.target.dataset.filter;
+        this.renderAppointments();
+      });
+    });
+
+    // Setup slot form listener
+    $("doctorSlotForm")?.addEventListener("submit", (e) => this.handleSlotSubmit(e));
+    $("cancelSlotEditBtn")?.addEventListener("click", () => this.cancelSlotEdit());
+
+    this.isInitialized = true;
+    this.switchTab(this.activeTab);
+  },
+
+  switchTab(tab) {
+    this.activeTab = tab;
+    
+    // Toggle sidebar class names
+    const btnApp = $("doctorTabAppointments");
+    const btnSlot = $("doctorTabSlots");
+    
+    if (tab === "appointments") {
+      btnApp?.classList.add("bg-slate-800/80", "text-white");
+      btnApp?.classList.remove("text-slate-400", "hover:bg-slate-800/40");
+      btnSlot?.classList.remove("bg-slate-800/80", "text-white");
+      btnSlot?.classList.add("text-slate-400", "hover:bg-slate-800/40");
+      
+      $("doctorAppointmentsView")?.classList.remove("hidden");
+      $("doctorSlotsView")?.classList.add("hidden");
+      
+      this.loadAppointments();
+    } else {
+      btnSlot?.classList.add("bg-slate-800/80", "text-white");
+      btnSlot?.classList.remove("text-slate-400", "hover:bg-slate-800/40");
+      btnApp?.classList.remove("bg-slate-800/80", "text-white");
+      btnApp?.classList.add("text-slate-400", "hover:bg-slate-800/40");
+      
+      $("doctorSlotsView")?.classList.remove("hidden");
+      $("doctorSlotsView")?.classList.add("flex");
+      $("doctorAppointmentsView")?.classList.add("hidden");
+      
+      this.loadSlots();
+    }
+  },
+
+  async loadAppointments() {
+    const listEl = $("doctorAppointmentsList");
+    if (listEl) listEl.innerHTML = '<p class="text-slate-400 text-sm p-4 col-span-full">Cargando turnos...</p>';
+    
+    try {
+      const res = await authFetch("/api/doctor/appointments");
+      if (!res.ok) throw new Error("Error al obtener los turnos.");
+      this.appointments = await res.json();
+      this.renderAppointments();
+    } catch (err) {
+      if (listEl) listEl.innerHTML = `<p class="text-red-400 text-sm p-4 col-span-full">${err.message}</p>`;
+    }
+  },
+
+  renderAppointments() {
+    const listEl = $("doctorAppointmentsList");
+    if (!listEl) return;
+    listEl.innerHTML = "";
+
+    const filtered = this.appointments.filter(app => {
+      if (this.currentFilter === "all") return true;
+      return app.status === this.currentFilter;
+    });
+
+    if (filtered.length === 0) {
+      listEl.innerHTML = '<p class="text-slate-400 text-sm p-4 col-span-full">No se encontraron turnos.</p>';
+      return;
+    }
+
+    filtered.forEach(app => {
+      const startsStr = parseApiDate(app.starts_at).toLocaleString("es-AR", {
+        weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
+      });
+      
+      let statusColor = "bg-slate-700 text-slate-300";
+      let statusLabel = app.status;
+      if (app.status === "confirmed") {
+        statusColor = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+        statusLabel = "Confirmado";
+      } else if (app.status === "cancelled") {
+        statusColor = "bg-rose-500/10 text-rose-400 border-rose-500/20";
+        statusLabel = "Cancelado";
+      } else if (app.status === "finished") {
+        statusColor = "bg-slate-500/10 text-slate-400 border-slate-500/20";
+        statusLabel = "Finalizado";
+      }
+
+      const card = document.createElement("div");
+      card.className = "p-5 rounded-2xl border border-slate-800 bg-slate-900/60 flex flex-col justify-between gap-4 hover:border-slate-700 transition animate-msg-in";
+      card.innerHTML = `
+        <div class="flex justify-between items-start">
+          <div>
+            <h4 class="font-semibold text-slate-100 text-base">${app.patient_name}</h4>
+            <p class="text-xs text-slate-400 mt-0.5">${app.patient_email}</p>
+            <div class="flex items-center gap-2 mt-3 text-sm text-slate-300">
+              <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+              <span class="capitalize font-medium text-xs sm:text-sm">${startsStr}</span>
+            </div>
+          </div>
+          <span class="px-2.5 py-1 text-xs font-semibold border rounded-lg ${statusColor}">
+            ${statusLabel}
+          </span>
+        </div>
+        
+        <div class="flex items-center gap-2 pt-3 border-t border-slate-800/60 justify-end">
+          <button class="doctor-action-btn px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-lg hover:text-white transition" data-id="${app.id}" data-action="confirmed" ${app.status === 'confirmed' ? 'disabled' : ''}>
+            Confirmar
+          </button>
+          <button class="doctor-action-btn px-3 py-1.5 text-xs font-medium bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 rounded-lg transition" data-id="${app.id}" data-action="cancelled" ${app.status === 'cancelled' ? 'disabled' : ''}>
+            Cancelar
+          </button>
+          <button class="doctor-action-btn px-3 py-1.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition" data-id="${app.id}" data-action="finished" ${app.status === 'finished' ? 'disabled' : ''}>
+            Finalizar
+          </button>
+        </div>
+      `;
+      listEl.appendChild(card);
+    });
+
+    // Action button listeners
+    listEl.querySelectorAll(".doctor-action-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.id;
+        const action = btn.dataset.action;
+        this.updateAppointmentStatus(id, action);
+      });
+    });
+  },
+
+  async updateAppointmentStatus(id, status) {
+    try {
+      const res = await authFetch(`/api/doctor/appointments/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      if (!res.ok) throw new Error("No se pudo actualizar el estado del turno.");
+      
+      // Update local array
+      const updated = await res.json();
+      const idx = this.appointments.findIndex(a => String(a.id) === String(id));
+      if (idx !== -1) {
+        this.appointments[idx] = updated;
+      }
+      this.renderAppointments();
+    } catch (err) {
+      alert(err.message);
+    }
+  },
+
+  async loadSlots() {
+    const listEl = $("doctorSlotsList");
+    if (listEl) listEl.innerHTML = '<p class="text-slate-400 text-sm p-4">Cargando horarios...</p>';
+    
+    try {
+      const res = await authFetch("/api/doctor/slots");
+      if (!res.ok) throw new Error("Error al obtener los horarios.");
+      this.slots = await res.json();
+      this.renderSlots();
+    } catch (err) {
+      if (listEl) listEl.innerHTML = `<p class="text-red-400 text-sm p-4">${err.message}</p>`;
+    }
+  },
+
+  renderSlots() {
+    const listEl = $("doctorSlotsList");
+    if (!listEl) return;
+    listEl.innerHTML = "";
+
+    if (this.slots.length === 0) {
+      listEl.innerHTML = '<p class="text-slate-400 text-sm py-4">No hay horarios configurados.</p>';
+      return;
+    }
+
+    this.slots.forEach(slot => {
+      const startsStr = parseApiDate(slot.starts_at).toLocaleString("es-AR", {
+        weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
+      });
+      
+      let statusColor = "bg-slate-700 text-slate-300";
+      let statusLabel = slot.status;
+      let canEditDelete = slot.status !== "booked";
+      
+      if (slot.status === "available") {
+        statusColor = "bg-cyan-500/10 text-cyan-400 border-cyan-500/20";
+        statusLabel = "Disponible";
+      } else if (slot.status === "booked") {
+        statusColor = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+        statusLabel = "Reservado (Booked)";
+      } else if (slot.status === "cancelled") {
+        statusColor = "bg-rose-500/10 text-rose-400 border-rose-500/20";
+        statusLabel = "Cancelado";
+      }
+
+      const card = document.createElement("div");
+      card.className = "p-4 rounded-xl border border-slate-800 bg-slate-900/40 flex items-center justify-between gap-4 hover:border-slate-700 transition animate-msg-in";
+      card.innerHTML = `
+        <div>
+          <div class="flex items-center gap-2 text-sm text-slate-200">
+            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <span class="capitalize font-medium">${startsStr}</span>
+          </div>
+          <div class="mt-2 flex items-center gap-2">
+            <span class="px-2 py-0.5 text-[10px] font-semibold border rounded-md ${statusColor}">
+              ${statusLabel}
+            </span>
+          </div>
+        </div>
+        
+        <div class="flex items-center gap-2 flex-shrink-0">
+          ${canEditDelete ? `
+            <button class="doctor-slot-edit-btn px-2.5 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition" data-id="${slot.id}" data-starts="${slot.starts_at}">
+              Editar
+            </button>
+            <button class="doctor-slot-delete-btn px-2.5 py-1.5 text-xs bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition" data-id="${slot.id}">
+              Eliminar
+            </button>
+          ` : '<span class="text-xs text-slate-500 font-medium px-2">Turno agendado</span>'}
+        </div>
+      `;
+      listEl.appendChild(card);
+    });
+
+    // Slot listeners
+    listEl.querySelectorAll(".doctor-slot-edit-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.id;
+        const starts = btn.dataset.starts;
+        this.startSlotEdit(id, starts);
+      });
+    });
+    
+    listEl.querySelectorAll(".doctor-slot-delete-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.id;
+        if (confirm("¿Estás seguro de que querés eliminar este horario disponible?")) {
+          this.deleteSlot(id);
+        }
+      });
+    });
+  },
+
+  setFormStatus(text, variant = "") {
+    const el = $("slotFormStatus");
+    if (!el) return;
+    el.textContent = text;
+    el.className = "text-xs mt-2";
+    if (variant === "error") el.classList.add("text-red-400");
+    else if (variant === "success") el.classList.add("text-emerald-400");
+    else el.classList.add("text-slate-400");
+  },
+
+  async handleSlotSubmit(e) {
+    e.preventDefault();
+    this.setFormStatus("");
+    
+    const editId = $("editSlotId").value;
+    const startsAtVal = $("slotStartsAt").value;
+    const durationVal = parseInt($("slotDuration").value, 10);
+    
+    if (!startsAtVal) {
+      this.setFormStatus("Por favor ingresá una fecha y hora.", "error");
+      return;
+    }
+
+    const starts_at = startsAtVal;
+
+    const isEdit = !!editId;
+    const url = isEdit ? `/api/doctor/slots/${editId}` : "/api/doctor/slots";
+    const method = isEdit ? "PUT" : "POST";
+
+    try {
+      const res = await authFetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ starts_at, duration_minutes: durationVal })
+      });
+      
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "Error al guardar el horario.");
+      }
+      
+      this.setFormStatus(isEdit ? "Horario actualizado con éxito." : "Horario creado con éxito.", "success");
+      $("doctorSlotForm").reset();
+      this.cancelSlotEdit();
+      this.loadSlots();
+    } catch (err) {
+      this.setFormStatus(err.message, "error");
+    }
+  },
+
+  startSlotEdit(id, startsAt) {
+    $("editSlotId").value = id;
+    
+    // Parse to datetime-local format (YYYY-MM-DDTHH:mm)
+    const date = parseApiDate(startsAt);
+    const tzOffset = date.getTimezoneOffset() * 60000; // offset in milliseconds
+    const localISOTime = (new Date(date - tzOffset)).toISOString().slice(0, 16);
+    
+    $("slotStartsAt").value = localISOTime;
+    $("slotFormTitle").textContent = "Editar Horario";
+    $("slotSubmitBtn").textContent = "Guardar Cambios";
+    $("cancelSlotEditBtn").classList.remove("hidden");
+  },
+
+  cancelSlotEdit() {
+    $("editSlotId").value = "";
+    $("doctorSlotForm").reset();
+    $("slotFormTitle").textContent = "Agregar Nuevo Horario";
+    $("slotSubmitBtn").textContent = "Agregar Slot";
+    $("cancelSlotEditBtn").classList.add("hidden");
+  },
+
+  async deleteSlot(id) {
+    try {
+      const res = await authFetch(`/api/doctor/slots/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "No se pudo eliminar el horario.");
+      }
+      this.loadSlots();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+};
+
+initAuth();

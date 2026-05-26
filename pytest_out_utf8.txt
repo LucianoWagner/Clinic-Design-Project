@@ -1,0 +1,84 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.0.3, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+plugins: anyio-4.13.0, asyncio-1.3.0, langsmith-0.8.5
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 2 items
+
+tests/test_doctor_api.py FF                                              [100%]
+
+=================================== FAILURES ===================================
+____________________________ test_doctor_slots_crud ____________________________
+
+client = <starlette.testclient.TestClient object at 0x7f979978ce00>
+
+    def test_doctor_slots_crud(client: TestClient) -> None:
+>       data = _setup_doctor_and_patient(client)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_doctor_api.py:122: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_doctor_api.py:91: in _setup_doctor_and_patient
+    doc_db.role = UserRole.doctor.value
+    ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = (User(email='doctor@test.com', phone='11223344', full_name='Dr. House', role='doctor', created_at=datetime.datetime(20...ber='88888888', password_hash='fakehash', is_active=True, updated_at=datetime.datetime(2026, 5, 26, 17, 0, 4, 10457)),)
+name = 'role', value = 'doctor'
+
+    def __setattr__(self, name: str, value: Any) -> NoReturn:
+>       raise AttributeError("can't set attribute")
+E       AttributeError: can't set attribute
+
+/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/row.py:81: AttributeError
+________________________ test_doctor_appointments_flow _________________________
+
+client = <starlette.testclient.TestClient object at 0x7f97996dbd10>
+
+    def test_doctor_appointments_flow(client: TestClient) -> None:
+>       data = _setup_doctor_and_patient(client)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_doctor_api.py:171: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_doctor_api.py:91: in _setup_doctor_and_patient
+    doc_db.role = UserRole.doctor.value
+    ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = (User(email='doctor@test.com', phone='11223344', full_name='Dr. House', role='doctor', created_at=datetime.datetime(20...er='88888888', password_hash='fakehash', is_active=True, updated_at=datetime.datetime(2026, 5, 26, 17, 0, 5, 400247)),)
+name = 'role', value = 'doctor'
+
+    def __setattr__(self, name: str, value: Any) -> NoReturn:
+>       raise AttributeError("can't set attribute")
+E       AttributeError: can't set attribute
+
+/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/row.py:81: AttributeError
+=============================== warnings summary ===============================
+tests/test_doctor_api.py::test_doctor_slots_crud
+tests/test_doctor_api.py::test_doctor_appointments_flow
+  /app/tests/test_doctor_api.py:90: DeprecationWarning: 
+          🚨 You probably want to use `session.exec()` instead of `session.query()`.
+  
+          `session.exec()` is SQLModel's own short version with increased type
+          annotations.
+  
+          Or otherwise you might want to use `session.execute()` instead of
+          `session.query()`.
+          
+    doc_db = session.exec(session.query(User).filter(User.email == "doctor@test.com")).first()
+
+tests/test_doctor_api.py::test_doctor_slots_crud
+  /usr/local/lib/python3.12/site-packages/sqlmodel/orm/session.py:75: SADeprecationWarning: Object <sqlalchemy.orm.query.Query object at 0x7f97983b2c60> should not be used directly in a SQL statement context, such as passing to methods such as session.execute().  This usage will be disallowed in a future release.  Please use Core select() / update() / delete() etc. with Session.execute() and other statement execution methods.
+    results = super().execute(
+
+tests/test_doctor_api.py::test_doctor_appointments_flow
+  /usr/local/lib/python3.12/site-packages/sqlmodel/orm/session.py:75: SADeprecationWarning: Object <sqlalchemy.orm.query.Query object at 0x7f97983dbda0> should not be used directly in a SQL statement context, such as passing to methods such as session.execute().  This usage will be disallowed in a future release.  Please use Core select() / update() / delete() etc. with Session.execute() and other statement execution methods.
+    results = super().execute(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_doctor_api.py::test_doctor_slots_crud - AttributeError: can...
+FAILED tests/test_doctor_api.py::test_doctor_appointments_flow - AttributeErr...
+======================== 2 failed, 4 warnings in 5.68s =========================

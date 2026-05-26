@@ -58,7 +58,7 @@ class AppointmentService:
     def search_availability(
         self, specialty_name: str | None = None, doctor_id: int | None = None, limit: int = 5
     ) -> list[SlotRead]:
-        now = datetime.now(UTC).replace(tzinfo=None)
+        now = (datetime.now(UTC) - timedelta(hours=3)).replace(tzinfo=None)
         statement = (
             select(AppointmentSlot, Doctor, Specialty)
             .join(Doctor, AppointmentSlot.doctor_id == Doctor.id)

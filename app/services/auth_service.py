@@ -78,4 +78,5 @@ def user_to_read(user: User) -> UserRead:
         document_number=user.document_number,
         phone=user.phone,
         is_active=user.is_active,
+        role=user.role,
     )

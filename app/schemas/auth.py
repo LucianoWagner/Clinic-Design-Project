@@ -21,6 +21,7 @@ class UserRead(BaseModel):
     document_number: str
     phone: str
     is_active: bool
+    role: str
 
 
 class TokenRead(BaseModel):

@@ -68,3 +68,29 @@ class UserAppointmentRead(BaseModel):
     ends_at: datetime
     status: str
     confirmed_at: datetime
+
+
+class DoctorSlotCreate(BaseModel):
+    starts_at: datetime
+    duration_minutes: int = Field(default=30, ge=1, le=120)
+
+
+class DoctorAppointmentRead(BaseModel):
+    id: int
+    patient_name: str
+    patient_email: str
+    starts_at: datetime
+    ends_at: datetime
+    status: str
+    confirmed_at: datetime
+
+
+class DoctorAppointmentStatusUpdate(BaseModel):
+    status: str
+
+
+class DoctorSlotRead(BaseModel):
+    id: int
+    starts_at: datetime
+    ends_at: datetime
+    status: str

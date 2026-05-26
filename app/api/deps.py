@@ -8,6 +8,9 @@ from app.db.session import get_session
 from app.models.user import User
 
 
+from app.models.enums import UserRole
+
+
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -28,6 +31,17 @@ def get_current_user(
     if not user or not user.is_active:
         raise _unauthorized()
     return user
+
+
+def require_role(required_role: UserRole):
+    def dependency(current_user: User = Depends(get_current_user)):
+        if current_user.role != required_role.value:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos suficientes para realizar esta acción."
+            )
+        return current_user
+    return dependency
 
 
 def _unauthorized() -> HTTPException:
