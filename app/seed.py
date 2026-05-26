@@ -60,8 +60,17 @@ def clean_database(session: Session) -> None:
     print("Base de datos limpia.")
 
 
+def is_already_seeded(session: Session) -> bool:
+    """Devuelve True si ya hay al menos un usuario en la BD (seed ya fue ejecutado)."""
+    return session.exec(select(User)).first() is not None
+
+
 def run() -> None:
     with Session(engine) as session:
+        if is_already_seeded(session):
+            print("Base de datos ya inicializada, omitiendo seed.")
+            return
+
         clean_database(session)
         
         # 1. Crear Especialidades
@@ -190,4 +199,15 @@ def run() -> None:
 
 
 if __name__ == "__main__":
-    run()
+    import sys
+    if "--force" in sys.argv:
+        # Reseteo forzado: limpia la BD aunque ya tenga datos
+        with Session(engine) as session:
+            clean_database(session)
+        # Remueve el guard de idempotencia para que run() siembre de cero
+        _original = is_already_seeded
+        globals()["is_already_seeded"] = lambda s: False
+        run()
+        globals()["is_already_seeded"] = _original
+    else:
+        run()

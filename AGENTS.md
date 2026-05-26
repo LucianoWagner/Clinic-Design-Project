@@ -195,3 +195,62 @@ Tools disponibles:
     - `POST /api/conversations/{id}/messages`: Límite de 10 requests por minuto.
     - `POST /api/tts`: Límite de 20 requests por minuto.
   - **WebSocket**: Como el limiter HTTP no se aplica a conexiones persistentes, se implementó un limitador in-memory (`message_count`) dentro del loop del `conversation_ws` que cierra el socket (código `1008`) si el usuario supera los 100 mensajes por sesión.
+
+### Fase 5 (Completada) - Portal Médico, Zona Horaria y Mejoras del Agente
+
+#### Portal del Médico (`/api/doctor/`)
+- Los usuarios con `role=doctor` ven una interfaz diferente al hacer login: panel con dos secciones separadas:
+  1. **Turnos con pacientes** (`appointments`): tabla interactiva con turnos `confirmed`, `cancelled` y `finished`. El doctor puede cambiar el estado de cada turno. Un turno `confirmed` cuya fecha ya pasó se presenta como `finished` en runtime (sin modificar la BD).
+  2. **Horarios disponibles** (`appointment_slots`): tabla con slots `available`. El doctor puede agregar, editar fecha/hora y eliminar slots.
+- Un slot que tiene un `Appointment` asociado (status=`booked`) **no aparece** en la tabla de horarios disponibles — figura en turnos con paciente.
+- Endpoints relevantes:
+  - `GET /api/doctor/appointments` — turnos del doctor autenticado.
+  - `PATCH /api/doctor/appointments/{id}/status` — actualiza estado (`confirmed`/`cancelled`/`finished`).
+  - `GET /api/doctor/slots` — slots disponibles del doctor autenticado.
+  - `POST /api/doctor/slots` — crea un nuevo slot.
+  - `PUT /api/doctor/slots/{id}` — edita fecha/hora de un slot existente.
+  - `DELETE /api/doctor/slots/{id}` — elimina un slot (solo si no tiene turno asociado).
+
+#### Zona Horaria (UTC-3 / Argentina)
+- **Problema raíz**: La BD almacena `TIMESTAMP WITHOUT TIME ZONE`. El backend corre en UTC (Docker). El frontend envía fechas locales. Sin corrección, un slot creado a las 14:00 hora local se guardaba como 17:00 UTC.
+- **Solución adoptada (naive local)**: Todo el stack maneja datetimes "naive" en hora local Argentina (UTC-3).
+  - El frontend envía la cadena `datetime-local` directamente (ej. `"2026-06-10T14:00"`) **sin** convertir a ISO UTC (`.toISOString()` fue removido del submit).
+  - El backend, al comparar "ahora" contra slots pasados, usa `datetime.now(UTC) - timedelta(hours=3)` en lugar de `datetime.now(UTC)` a secas. Afecta: `appointment_service.py`, `doctor.py` (status `finished`), `seed.py`.
+  - `parseApiDate()` en `app.js` parsea los datetimes devueltos por la API como hora local (sin forzar `Z`) para que la visualización sea consistente.
+- **Limitación conocida**: el offset `-3` está hardcodeado. Si el servidor se despliega en otra zona horaria o se necesita DST, se debe migrar a una solución con `pytz`/`zoneinfo` y timestamps WITH TIME ZONE en Postgres.
+
+#### Búsqueda de Disponibilidad con Filtro de Fecha
+- `search_availability` tool ahora acepta `date_from: str | None` y `date_to: str | None` (formato `YYYY-MM-DD`).
+- Para buscar un día exacto: `date_from=date_to="2026-06-09"`.
+- El LLM está instruido en `prompt.py` a usar estos parámetros cuando el usuario pide turnos para una fecha específica. **Nunca debe decir "no puedo buscar por fecha"**.
+- Límite por defecto subido de 5 a 20 (máximo 50). El LLM muestra todos los slots devueltos agrupados por día.
+- Los parámetros se parsean a `date` en Python dentro de la tool antes de pasarlos al servicio.
+
+#### Seed Idempotente
+- `app/seed.py` ya **no borra ni recrea datos** si la BD tiene usuarios.
+- El `docker-compose.yml` corre `python -m app.seed` en cada arranque, pero la función `is_already_seeded()` lo cortocircuita si ya hay datos — los checkpoints de LangGraph, conversaciones e historial sobreviven entre reinicios.
+- Para **forzar un reset completo** (borrar todo y sembrar desde cero):
+  ```bash
+  docker compose exec api env PYTHONPATH=/app python /app/app/seed.py --force
+  ```
+
+#### Usuarios del Sistema (seed)
+| Rol | Email | Contraseña |
+|-----|-------|-----------|
+| Admin | `admin@consultorio.com` | `admin1234` |
+| Paciente | `paciente@consultorio.com` | `paciente1234` |
+| Médico | `ana@consultorio.com` | `doctor1234` |
+| Médico | `juan@consultorio.com` | `doctor1234` |
+| Médico | `laura@consultorio.com` | `doctor1234` |
+| Médico | `maria@consultorio.com` | `doctor1234` |
+
+- `ana` → Dra. Ana Pérez (cardiología, MN1001)
+- `juan` → Dr. Juan Gómez (clínica, MN1002)
+- `laura` → Dra. Laura Díaz (dermatología, MN1003)
+- `maria` → Dra. María Torres (pediatría, MN1004)
+
+#### Convenciones Adicionales Para Agentes
+- No usar `.toISOString()` al enviar fechas de slots desde el frontend: enviar la cadena `datetime-local` (`YYYY-MM-DDTHH:mm`) directamente.
+- No comparar datetimes contra `datetime.now(UTC)` sin el ajuste `-timedelta(hours=3)` en servicios que involucren slots o appointments.
+- No ejecutar `seed.run()` directamente sin verificar `is_already_seeded()` — hacerlo desde CLI con `--force` si se necesita reset.
+- El frontend diferencia el rol del usuario post-login: `role === "doctor"` → vista portal médico; cualquier otro rol → vista chatbot.

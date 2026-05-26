@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -48,7 +48,9 @@ class AppointmentRead(BaseModel):
 class SearchAvailabilityToolInput(BaseModel):
     specialty_name: Optional[str] = Field(default=None, max_length=120)
     doctor_id: Optional[int] = None
-    limit: int = Field(default=5, ge=1, le=10)
+    date_from: Optional[date] = Field(default=None, description="Fecha de inicio (inclusive), formato YYYY-MM-DD")
+    date_to: Optional[date] = Field(default=None, description="Fecha de fin (inclusive), formato YYYY-MM-DD")
+    limit: int = Field(default=20, ge=1, le=50)
 
 
 class HoldSlotToolInput(BaseModel):

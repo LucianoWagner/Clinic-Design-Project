@@ -6,6 +6,7 @@ con closures sobre la sesión de DB y la sesión de interacción.
 El LLM solo ve los argumentos de negocio; session e interaction son invisibles para él.
 """
 import json
+from datetime import date
 from typing import Any
 
 from langchain_core.tools import tool
@@ -75,19 +76,42 @@ def build_tools(session: Session, interaction: InteractionSession) -> list:
     def search_availability(
         specialty_name: str | None = None,
         doctor_id: int | None = None,
-        limit: int = 5,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        limit: int = 20,
     ) -> dict:
         """
-        Busca turnos disponibles reales en la base de datos.
-        Requiere specialty_name o doctor_id. Nunca inventa disponibilidad.
+        Busca turnos disponibles en la base de datos.
+        Requiere specialty_name o doctor_id.
+        Soporta filtrado por fecha usando date_from y/o date_to en formato YYYY-MM-DD.
+        Usa date_from=date_to=YYYY-MM-DD para buscar un día exacto.
+        Por defecto devuelve hasta 20 turnos.
+        Nunca inventa disponibilidad.
         Devuelve lista de slots con id, médico, especialidad, fecha y hora.
         """
-        args = {"specialty_name": specialty_name, "doctor_id": doctor_id, "limit": limit}
+        args = {"specialty_name": specialty_name, "doctor_id": doctor_id,
+                "date_from": date_from, "date_to": date_to, "limit": limit}
         try:
-            payload = SearchAvailabilityToolInput(**args)
+            # Parsear fechas si vienen como strings YYYY-MM-DD
+            parsed_date_from: date | None = None
+            parsed_date_to: date | None = None
+            if date_from:
+                parsed_date_from = date.fromisoformat(date_from)
+            if date_to:
+                parsed_date_to = date.fromisoformat(date_to)
+
+            payload = SearchAvailabilityToolInput(
+                specialty_name=specialty_name,
+                doctor_id=doctor_id,
+                date_from=parsed_date_from,
+                date_to=parsed_date_to,
+                limit=limit,
+            )
             slots = appointments.search_availability(
                 specialty_name=payload.specialty_name,
                 doctor_id=payload.doctor_id,
+                date_from=payload.date_from,
+                date_to=payload.date_to,
                 limit=payload.limit,
             )
             interaction.current_state = "presenting_options" if slots else "no_availability"

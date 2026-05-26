@@ -1,5 +1,5 @@
 import unicodedata
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -56,7 +56,12 @@ class AppointmentService:
         return list(grouped.values())
 
     def search_availability(
-        self, specialty_name: str | None = None, doctor_id: int | None = None, limit: int = 5
+        self,
+        specialty_name: str | None = None,
+        doctor_id: int | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        limit: int = 20,
     ) -> list[SlotRead]:
         now = (datetime.now(UTC) - timedelta(hours=3)).replace(tzinfo=None)
         statement = (
@@ -85,6 +90,16 @@ class AppointmentService:
                 statement = statement.where(func.unaccent(Specialty.name).ilike(f"%{normalized}%"))
         if doctor_id:
             statement = statement.where(Doctor.id == doctor_id)
+        if date_from:
+            # Inicio del día indicado (00:00:00)
+            statement = statement.where(
+                AppointmentSlot.starts_at >= datetime(date_from.year, date_from.month, date_from.day, 0, 0, 0)
+            )
+        if date_to:
+            # Fin del día indicado (23:59:59)
+            statement = statement.where(
+                AppointmentSlot.starts_at <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
+            )
 
         rows = self.session.exec(statement).all()
         return [
