@@ -23,6 +23,9 @@ class EmailOutbox(SQLModel, table=True):
     provider_message_id: Optional[str] = Field(default=None, max_length=160)
     attempt_count: int = Field(default=0)
     last_error: Optional[str] = Field(default=None, max_length=1000)
+    # JSON con datos estructurados del turno para proveedores como n8n
+    # Ej: {"confirmation_code": "TRN-0042", "doctor_name": "...", ...}
+    appointment_data: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, index=True)
     updated_at: datetime = Field(default_factory=utcnow)
     sent_at: Optional[datetime] = None

@@ -4,59 +4,49 @@ MVP web para gestión de turnos médicos con chat escrito y voz desde navegador,
 
 ## Requisitos Previos
 
-- Python 3.12+
 - Docker y Docker Compose
 - Una API Key de Groq (gratuita en [console.groq.com](https://console.groq.com))
+- Una App Password de Gmail (si vas a usar el envío de emails con n8n)
 
-## Configuración del Entorno Local (.venv)
+## Configuración Inicial
 
-Para no instalar las librerías globalmente, te recomendamos crear un entorno virtual de Python. Esto también habilita que el IDE (VSCode/Cursor) te tome el tipado correcto.
+1. **Configuración de Variables de Entorno:**
+   Creá tu archivo `.env` copiando el archivo de ejemplo:
+   ```powershell
+   copy .env.example .env
+   ```
+   Abrí el archivo `.env` y asegurate de completar tus credenciales (especialmente `GROQ_API_KEY` y las configuraciones de n8n o ElevenLabs si usás voz/correo).
 
-Abrí **PowerShell** en la carpeta del proyecto y ejecutá:
+2. **(Opcional) Configuración del Entorno Local para Autocompletado del IDE (.venv):**
+   Si querés tener ayuda de tipado y linting en VSCode/Cursor, podés crear el entorno virtual localmente:
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   pip install -e ".[dev]"
+   ```
 
-```powershell
-# 1. Crear el entorno virtual
-python -m venv .venv
+## Levantar el Proyecto
 
-# 2. Activar el entorno virtual (PowerShell)
-.\.venv\Scripts\Activate.ps1
-
-# 3. Instalar las dependencias
-pip install -e ".[dev]"
-```
-
-*Nota: Si PowerShell te da un error de "ExecutionPolicy", ejecutá esto como Administrador y volvé a intentar: `Set-ExecutionPolicy Unrestricted -Scope CurrentUser`*
-
-## Configuración de Variables de Entorno
-
-Creá el archivo de configuración a partir del ejemplo:
-
-```powershell
-copy .env.example .env
-```
-
-Abrí el archivo `.env` y asegurate de tener Groq configurado:
-
-```env
-GROQ_API_KEY=tu_api_key_aca
-GROQ_MODEL=llama-3.3-70b-versatile
-```
-
-## Levantar el Proyecto (Docker)
-
-El proyecto entero (Base de Datos PostgreSQL + API FastAPI + Frontend HTML/JS) se levanta con Docker. LangGraph automáticamente creará sus tablas de memoria en el arranque.
+Todo el stack (Base de Datos PostgreSQL + Redis + API FastAPI + Frontend HTML/JS + n8n) se levanta y corre directamente en contenedores de Docker:
 
 ```powershell
-docker compose up --build
+# Levantar en segundo plano
+docker compose up -d
 ```
 
-El contenedor `api` aplicará las migraciones y cargará los médicos de prueba y turnos automáticamente antes de iniciar el servidor.
+El contenedor `api` aplicará las migraciones de base de datos de Alembic y sembrará los usuarios y médicos de prueba de forma idempotente en el arranque.
 
-**Para probarlo:**
-Abrí tu navegador en `http://localhost:8000`.
+## Direcciones de Acceso Local
+
+Una vez levantados los contenedores, podés acceder a los servicios en las siguientes direcciones:
+
+*   **Aplicación Web (Chatbot y Portal Médico):** [http://localhost:8000](http://localhost:8000)
+*   **Workflow Automation (n8n):** [http://localhost:5678](http://localhost:5678)
+*   **Documentación de la API (Swagger):** [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ## ¿Cómo funciona?
 
-El usuario escribe o habla en lenguaje natural. El modelo (Groq) decide si necesita usar herramientas como `search_availability`, `hold_slot` o `confirm_appointment`. 
+1. **Frontend:** Ofrece el Chatbot con IA (REST/WebSockets con Push-To-Talk) para pacientes, y el Portal de gestión de agendas para médicos.
+2. **Orquestador (LangGraph):** Decide dinámicamente si usar herramientas como `search_availability`, `hold_slot` o `confirm_appointment` según lo que el usuario pida en lenguaje natural.
+3. **Notificaciones (n8n + Outbox):** Al confirmar un turno, el backend registra el correo en la tabla outbox de PostgreSQL. Post-commit, se envía al webhook de n8n, el cual despacha un correo HTML profesional vía Gmail SMTP.
 
-El **Orquestador (LangGraph)** intercepta estos pedidos, valida contra la Base de Datos y gestiona el historial de la conversación (memoria) sin mezclarlo con la información estricta de negocio (SQLModel).

@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     email_provider: str = "resend"
     email_from: str = "Consultorio <turnos@example.com>"
     resend_api_key: str | None = None
+    n8n_webhook_url: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

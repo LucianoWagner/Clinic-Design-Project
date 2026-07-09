@@ -254,3 +254,20 @@ Tools disponibles:
 - No comparar datetimes contra `datetime.now(UTC)` sin el ajuste `-timedelta(hours=3)` en servicios que involucren slots o appointments.
 - No ejecutar `seed.run()` directamente sin verificar `is_already_seeded()` — hacerlo desde CLI con `--force` si se necesita reset.
 - El frontend diferencia el rol del usuario post-login: `role === "doctor"` → vista portal médico; cualquier otro rol → vista chatbot.
+
+### Fase 5.5 (Completada) - Automatización con n8n y Filtros de Slots Reservados
+
+#### Integración de Email con n8n (Webhook + SMTP)
+- **Problema**: El sandbox de Resend limita los destinatarios a la cuenta verificada.
+- **Solución**: Se implementó una integración con n8n alojado localmente en Docker en el puerto `5678`.
+  - El backend hace un POST JSON a la URL configurada en `N8N_WEBHOOK_URL` (ej. `http://n8n:5678/webhook/confirm-appointment`).
+  - **Payload enviado**: incluye datos estructurados del turno (`confirmation_code`, `doctor_name`, `specialty`, `starts_at`, `ends_at`, `recipient_name`, `recipient_email`).
+  - **Estrategia Outbox**: Se añadió una columna `appointment_data` (JSON serializado como texto) a la tabla `email_outbox` para guardar estos campos estruturados sin romper la compatibilidad con el fallback de Resend. El outbox es procesado asincrónicamente post-commit.
+  - **Workflow n8n**: Webhook Trigger (`/confirm-appointment`) ➔ Send Email (SMTP con Gmail y App Password) ➔ Respond to Webhook (código 200 OK para confirmar envío al backend).
+
+#### Conservación y Ocultamiento de Slots Reservados
+- **Comportamiento de la BD**: Al reservar un horario, **no se elimina** la fila de `appointment_slots`. Simplemente se actualiza su estado a `status = 'booked'`. Esto evita la pérdida de historial y mantiene la consistencia de la base de datos.
+- **Portal del Médico**:
+  - Se modificó el endpoint `GET /api/doctor/slots` para filtrar y **excluir** aquellos slots que tienen `status = 'booked'`.
+  - El médico ya no ve slots reservados en su panel de "Horarios disponibles" (estos ahora solo figuran de forma correcta en la pestaña de "Turnos con pacientes").
+

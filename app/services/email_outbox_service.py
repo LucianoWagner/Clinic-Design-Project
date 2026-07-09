@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 
 from sqlmodel import Session, select
@@ -20,6 +21,10 @@ class EmailOutboxService:
     def enqueue_appointment_confirmation(
         self, *, appointment_id: int, email: AppointmentEmail
     ) -> EmailOutbox:
+        # Completa el appointment_id en los datos estructurados
+        appt_data = dict(email.appointment_data)
+        appt_data["appointment_id"] = appointment_id
+
         outbox = EmailOutbox(
             appointment_id=appointment_id,
             recipient_email=email.recipient_email,
@@ -28,6 +33,7 @@ class EmailOutboxService:
             html_body=email.html_body,
             text_body=email.text_body,
             provider=settings.email_provider,
+            appointment_data=json.dumps(appt_data, ensure_ascii=False),
         )
         self.session.add(outbox)
         return outbox
@@ -49,12 +55,22 @@ class EmailOutboxService:
         pending = list(self.session.exec(statement).all())
         dispatched: list[EmailOutbox] = []
         for item in pending:
+            # Deserializar appointment_data si existe
+            appt_data: dict = {}
+            if item.appointment_data:
+                try:
+                    appt_data = json.loads(item.appointment_data)
+                except Exception:  # noqa: BLE001
+                    appt_data = {}
+
             try:
                 result = provider.send(
                     recipient_email=item.recipient_email,
+                    recipient_name=item.recipient_name,
                     subject=item.subject,
                     html_body=item.html_body,
                     text_body=item.text_body,
+                    appointment_data=appt_data,
                 )
             except Exception as exc:  # noqa: BLE001
                 item.status = "failed"
@@ -77,3 +93,4 @@ class EmailOutboxService:
         if dispatched:
             self.session.commit()
         return dispatched
+

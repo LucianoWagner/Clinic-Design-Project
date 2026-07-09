@@ -177,6 +177,11 @@ def test_doctor_appointments_flow(client: TestClient) -> None:
     session.add(appt)
     session.commit()
     
+    # 0. Get slots and verify the booked slot is filtered out
+    response_slots = client.get("/api/doctor/slots", headers=doc_headers)
+    assert response_slots.status_code == 200
+    assert len(response_slots.json()) == 0
+    
     # 1. Get doctor's appointments
     response = client.get("/api/doctor/appointments", headers=doc_headers)
     assert response.status_code == 200

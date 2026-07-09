@@ -1,5 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from html import escape
+from typing import Any
 
 from app.models.appointment import AppointmentSlot
 from app.models.doctor import Doctor, Specialty
@@ -13,6 +14,8 @@ class AppointmentEmail:
     subject: str
     html_body: str
     text_body: str
+    # Campos estructurados para proveedores que construyen su propio HTML (ej. n8n)
+    appointment_data: dict[str, Any] = field(default_factory=dict)
 
 
 class AppointmentEmailBuilder:
@@ -51,10 +54,20 @@ class AppointmentEmailBuilder:
           <p>Si necesitas modificarlo o cancelarlo, contacta al consultorio.</p>
         </div>
         """
+        appointment_data = {
+            "confirmation_code": confirmation_code,
+            "doctor_name": doctor.full_name,
+            "specialty": specialty.name,
+            "starts_at": starts_at,
+            "ends_at": ends_at,
+            "appointment_id": None,  # Se completa al encolar en EmailOutboxService
+        }
         return AppointmentEmail(
             recipient_email=user.email,
             recipient_name=user.full_name,
             subject=subject,
             html_body=html_body,
             text_body=text_body,
+            appointment_data=appointment_data,
         )
+

@@ -446,50 +446,114 @@
       </section>
 
       <!-- Tab 2: Horarios Disponibles -->
-      <section id="doctorSlotsView" class="hidden flex-1 flex flex-col sm:flex-row overflow-hidden">
-        <!-- List side -->
-        <div class="flex-1 flex flex-col overflow-hidden p-6 gap-6 border-r border-slate-800 animate-msg-in">
+      <section id="doctorSlotsView" class="hidden flex-1 flex flex-col overflow-hidden p-6 gap-4">
+
+        <!-- Header -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
           <div>
             <h1 class="text-xl font-bold text-white">Horarios Disponibles</h1>
-            <p class="text-sm text-slate-400 mt-0.5">Tus slots de atención creados</p>
+            <p class="text-sm text-slate-400 mt-0.5">Tus slots de atención configurados</p>
           </div>
-          
-          <div class="flex-1 overflow-y-auto" style="scrollbar-width: thin; scrollbar-color: #334155 transparent;">
-            <div id="doctorSlotsList" class="flex flex-col gap-3">
-              <!-- Dinámico -->
+          <button id="toggleSlotFormBtn" class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-600 text-sm font-semibold text-white shadow-[0_0_14px_rgba(6,182,212,0.3)] transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            Agregar Nuevo Horario
+          </button>
+        </div>
+
+        <!-- Collapsible Calendar Form Panel -->
+        <div id="slotFormPanel" class="hidden rounded-xl border border-slate-700/50 bg-slate-900/70 overflow-hidden">
+          <!-- Panel header -->
+          <div class="flex items-center justify-between px-4 py-3 border-b border-slate-700/50 bg-slate-800/50">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+              <h3 class="text-sm font-semibold text-white" id="slotFormTitle">Nuevo Horario Disponible</h3>
+            </div>
+            <button id="cancelSlotEditBtn" type="button" class="text-slate-500 hover:text-white transition p-1.5 rounded-lg hover:bg-slate-700">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <input type="hidden" id="editSlotId" />
+
+          <!-- Panel body: responsive grid -->
+          <div class="p-4 flex flex-col sm:flex-row gap-4">
+
+            <!-- LEFT: Compact Calendar -->
+            <div class="flex-shrink-0 w-full sm:w-[220px]">
+              <div class="rounded-lg border border-slate-700/50 bg-slate-950/70 overflow-hidden">
+                <!-- Month nav -->
+                <div class="flex items-center justify-between px-3 py-2 bg-slate-800/60 border-b border-slate-700/50">
+                  <button id="calPrevMonth" type="button" class="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-700 transition">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
+                  </button>
+                  <span id="calMonthLabel" class="text-xs font-bold text-white tracking-wide uppercase"></span>
+                  <button id="calNextMonth" type="button" class="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-700 transition">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+                  </button>
+                </div>
+                <!-- Day headers -->
+                <div class="grid grid-cols-7 px-1.5 pt-1.5">
+                  <span class="text-center text-[9px] font-bold text-slate-600 pb-1">D</span>
+                  <span class="text-center text-[9px] font-bold text-slate-600 pb-1">L</span>
+                  <span class="text-center text-[9px] font-bold text-slate-600 pb-1">M</span>
+                  <span class="text-center text-[9px] font-bold text-slate-600 pb-1">X</span>
+                  <span class="text-center text-[9px] font-bold text-slate-600 pb-1">J</span>
+                  <span class="text-center text-[9px] font-bold text-slate-600 pb-1">V</span>
+                  <span class="text-center text-[9px] font-bold text-cyan-600/70 pb-1">S</span>
+                </div>
+                <!-- Day grid -->
+                <div id="calDayGrid" class="grid grid-cols-7 gap-px px-1.5 pb-2"></div>
+              </div>
+
+              <!-- Selected date chip -->
+              <div id="calSelectedDisplay" class="hidden mt-2 items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/25">
+                <svg class="w-3 h-3 text-cyan-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
+                <span id="calSelectedText" class="text-[11px] font-semibold text-cyan-300 truncate"></span>
+              </div>
+            </div>
+
+            <!-- RIGHT: Time pickers + action -->
+            <div class="flex-1 flex flex-col gap-3 min-w-0">
+              <!-- Start time -->
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <label class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Inicio</label>
+                  <input id="calStartTimeCustom" type="time" class="rounded-md border border-slate-700 bg-slate-950 px-2 py-0.5 text-xs text-white outline-none focus:border-cyan-500 w-24" />
+                </div>
+                <div id="calStartTimeGrid" class="grid grid-cols-5 gap-1"></div>
+              </div>
+
+              <!-- End time -->
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <label class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Fin</label>
+                  <input id="calEndTimeCustom" type="time" class="rounded-md border border-slate-700 bg-slate-950 px-2 py-0.5 text-xs text-white outline-none focus:border-cyan-500 w-24" />
+                </div>
+                <div id="calEndTimeGrid" class="grid grid-cols-5 gap-1"></div>
+              </div>
+
+              <!-- Status + Submit -->
+              <div class="mt-auto pt-1">
+                <div id="slotFormStatus" class="text-[11px] mb-2"></div>
+                <button type="button" id="slotSubmitBtn" class="w-full rounded-lg bg-cyan-500 px-3 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 shadow-[0_0_12px_rgba(6,182,212,0.3)] transition flex items-center justify-center gap-2">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                  Guardar Horario
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- Form side -->
-        <div class="w-full sm:w-80 bg-slate-900/50 p-6 flex flex-col gap-6 overflow-y-auto border-t sm:border-t-0 border-slate-800">
-          <div>
-            <h3 class="text-md font-semibold text-white" id="slotFormTitle">Agregar Nuevo Horario</h3>
-            <p class="text-xs text-slate-400 mt-0.5">Creá un bloque libre para que los pacientes reserven mediante el chatbot.</p>
+        <!-- Slots list -->
+        <div class="flex-1 overflow-y-auto" style="scrollbar-width: thin; scrollbar-color: #334155 transparent;">
+          <div id="doctorSlotsList" class="flex flex-col gap-3">
+            <!-- Dinámico -->
           </div>
-          
-          <form id="doctorSlotForm" class="space-y-4">
-            <input type="hidden" id="editSlotId" />
-            <div>
-              <label class="block text-xs font-medium text-slate-400 mb-1.5">Fecha y Hora de Inicio</label>
-              <input id="slotStartsAt" type="datetime-local" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-slate-400 mb-1.5">Duración (minutos)</label>
-              <input id="slotDuration" type="number" value="30" min="5" max="120" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" required />
-            </div>
-            
-            <div class="flex gap-2 pt-2">
-              <button id="cancelSlotEditBtn" type="button" class="hidden flex-1 rounded-xl border border-slate-700 bg-slate-800 text-sm font-semibold text-slate-300 py-3 hover:bg-slate-700 transition">Cancelar</button>
-              <button type="submit" id="slotSubmitBtn" class="flex-1 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600 shadow-[0_0_12px_rgba(6,182,212,0.2)] transition">Agregar Slot</button>
-            </div>
-          </form>
-          <div id="slotFormStatus" class="text-xs"></div>
         </div>
       </section>
     </main>
   </div>
 
-    <script src="/app.js?v=32"></script>
+    <script src="/app.js?v=37"></script>
 </body>
 </html>

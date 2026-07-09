@@ -130,6 +130,7 @@ def get_doctor_slots(
     statement = (
         select(AppointmentSlot)
         .where(AppointmentSlot.doctor_id == doctor.id)
+        .where(AppointmentSlot.status != SlotStatus.booked.value)
         .order_by(AppointmentSlot.starts_at.desc())
     )
     slots = session.exec(statement).all()

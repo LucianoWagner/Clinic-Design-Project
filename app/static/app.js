@@ -2362,9 +2362,14 @@ const doctorPortal = {
       });
     });
 
-    // Setup slot form listener
-    $("doctorSlotForm")?.addEventListener("submit", (e) => this.handleSlotSubmit(e));
+    // Toggle form panel button
+    $("toggleSlotFormBtn")?.addEventListener("click", () => this.toggleSlotForm());
+
+    // Setup calendar slot controls
+    $("slotSubmitBtn")?.addEventListener("click", () => this.handleSlotSubmit());
     $("cancelSlotEditBtn")?.addEventListener("click", () => this.cancelSlotEdit());
+
+    // slotCalendar is initialized lazily when the slots tab is first shown
 
     this.isInitialized = true;
     this.switchTab(this.activeTab);
@@ -2396,7 +2401,9 @@ const doctorPortal = {
       $("doctorSlotsView")?.classList.remove("hidden");
       $("doctorSlotsView")?.classList.add("flex");
       $("doctorAppointmentsView")?.classList.add("hidden");
-      
+
+      // Init/refresh calendar now that the container is visible
+      slotCalendar.init();
       this.loadSlots();
     }
   },
@@ -2613,66 +2620,121 @@ const doctorPortal = {
     else el.classList.add("text-slate-400");
   },
 
-  async handleSlotSubmit(e) {
-    e.preventDefault();
+  async handleSlotSubmit() {
     this.setFormStatus("");
-    
+
     const editId = $("editSlotId").value;
-    const startsAtVal = $("slotStartsAt").value;
-    const durationVal = parseInt($("slotDuration").value, 10);
-    
-    if (!startsAtVal) {
-      this.setFormStatus("Por favor ingresá una fecha y hora.", "error");
+    const { selectedDate, selectedStart, selectedEnd } = slotCalendar.getSelection();
+
+    if (!selectedDate) {
+      this.setFormStatus("Seleccioná una fecha en el calendario.", "error");
+      return;
+    }
+    if (!selectedStart) {
+      this.setFormStatus("Seleccioná la hora de inicio.", "error");
+      return;
+    }
+    if (!selectedEnd) {
+      this.setFormStatus("Seleccioná la hora de fin.", "error");
       return;
     }
 
-    const starts_at = startsAtVal;
+    // Build YYYY-MM-DDTHH:mm strings (naive local, no UTC conversion per AGENTS.md)
+    const pad = (n) => String(n).padStart(2, "0");
+    const dateStr = `${selectedDate.year}-${pad(selectedDate.month + 1)}-${pad(selectedDate.day)}`;
+    const starts_at = `${dateStr}T${selectedStart}`;
+    const ends_at   = `${dateStr}T${selectedEnd}`;
+
+    // Validate order
+    if (starts_at >= ends_at) {
+      this.setFormStatus("La hora de fin debe ser posterior a la de inicio.", "error");
+      return;
+    }
 
     const isEdit = !!editId;
-    const url = isEdit ? `/api/doctor/slots/${editId}` : "/api/doctor/slots";
+    const url    = isEdit ? `/api/doctor/slots/${editId}` : "/api/doctor/slots";
     const method = isEdit ? "PUT" : "POST";
+
+    // Duration in minutes (derived from start/end)
+    const [sh, sm] = selectedStart.split(":").map(Number);
+    const [eh, em] = selectedEnd.split(":").map(Number);
+    const duration_minutes = (eh * 60 + em) - (sh * 60 + sm);
 
     try {
       const res = await authFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ starts_at, duration_minutes: durationVal })
+        body: JSON.stringify({ starts_at, duration_minutes })
       });
-      
+
       if (!res.ok) {
         const errData = await res.json();
         throw new Error(errData.detail || "Error al guardar el horario.");
       }
-      
+
       this.setFormStatus(isEdit ? "Horario actualizado con éxito." : "Horario creado con éxito.", "success");
-      $("doctorSlotForm").reset();
       this.cancelSlotEdit();
-      this.loadSlots();
+      await this.loadSlots();
     } catch (err) {
       this.setFormStatus(err.message, "error");
     }
   },
 
   startSlotEdit(id, startsAt) {
+    // Open the panel if closed
+    const panel = $("slotFormPanel");
+    const toggleBtn = $("toggleSlotFormBtn");
+    if (panel && panel.classList.contains("hidden")) {
+      panel.classList.remove("hidden");
+      if (toggleBtn) toggleBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg> Cancelar';
+    }
+    // Init calendar so DOM is ready
+    slotCalendar.init();
+
+    // Populate slot data
     $("editSlotId").value = id;
-    
-    // Parse to datetime-local format (YYYY-MM-DDTHH:mm)
     const date = parseApiDate(startsAt);
-    const tzOffset = date.getTimezoneOffset() * 60000; // offset in milliseconds
-    const localISOTime = (new Date(date - tzOffset)).toISOString().slice(0, 16);
-    
-    $("slotStartsAt").value = localISOTime;
-    $("slotFormTitle").textContent = "Editar Horario";
-    $("slotSubmitBtn").textContent = "Guardar Cambios";
-    $("cancelSlotEditBtn").classList.remove("hidden");
+    slotCalendar.setFromDate(date);
+
+    // Update labels
+    const title = $("slotFormTitle");
+    if (title) title.textContent = "Editar Horario";
+    const submitBtn = $("slotSubmitBtn");
+    if (submitBtn) {
+      const textNode = [...submitBtn.childNodes].find(n => n.nodeType === 3);
+      if (textNode) textNode.textContent = " Guardar Cambios";
+    }
+    panel?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  },
+
+  toggleSlotForm() {
+    const panel = $("slotFormPanel");
+    const btn   = $("toggleSlotFormBtn");
+    if (!panel) return;
+    const isOpen = !panel.classList.contains("hidden");
+    if (isOpen) {
+      panel.classList.add("hidden");
+      if (btn) btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Agregar Nuevo Horario`;
+      slotCalendar.reset();
+      $("editSlotId").value = "";
+    } else {
+      panel.classList.remove("hidden");
+      if (btn) btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg> Cancelar`;
+      // Init calendar now that container is visible
+      slotCalendar.init();
+    }
   },
 
   cancelSlotEdit() {
     $("editSlotId").value = "";
-    $("doctorSlotForm").reset();
-    $("slotFormTitle").textContent = "Agregar Nuevo Horario";
-    $("slotSubmitBtn").textContent = "Agregar Slot";
-    $("cancelSlotEditBtn").classList.add("hidden");
+    slotCalendar.reset();
+    $("slotFormTitle").textContent = "Nuevo Horario Disponible";
+    this.setFormStatus("");
+    // Close the panel
+    const panel = $("slotFormPanel");
+    const btn   = $("toggleSlotFormBtn");
+    if (panel) panel.classList.add("hidden");
+    if (btn) btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Agregar Nuevo Horario`;
   },
 
   async deleteSlot(id) {
@@ -2689,4 +2751,200 @@ const doctorPortal = {
   }
 };
 
+// ===================================================================
+// Slot Calendar Widget
+// ===================================================================
+const slotCalendar = {
+  currentYear: 0,
+  currentMonth: 0,
+  selectedDate: null,   // { year, month, day }
+  selectedStart: null,  // "HH:mm"
+  selectedEnd: null,    // "HH:mm"
+
+  MONTHS: ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"],
+  TIME_SLOTS: ["07:00","07:30","08:00","08:30","09:00","09:30","10:00","10:30","11:00","11:30","12:00","12:30","14:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"],
+  _listenersAttached: false,
+
+  init() {
+    // Only attach listeners once
+    if (!this._listenersAttached) {
+      const now = new Date();
+      this.currentYear  = now.getFullYear();
+      this.currentMonth = now.getMonth();
+
+      $("calPrevMonth")?.addEventListener("click", () => {
+        this.currentMonth--;
+        if (this.currentMonth < 0) { this.currentMonth = 11; this.currentYear--; }
+        this.renderCalendar();
+      });
+      $("calNextMonth")?.addEventListener("click", () => {
+        this.currentMonth++;
+        if (this.currentMonth > 11) { this.currentMonth = 0; this.currentYear++; }
+        this.renderCalendar();
+      });
+      $("calStartTimeCustom")?.addEventListener("change", (e) => {
+        this.selectedStart = e.target.value;
+        this.renderTimeGrid("start");
+      });
+      $("calEndTimeCustom")?.addEventListener("change", (e) => {
+        this.selectedEnd = e.target.value;
+        this.renderTimeGrid("end");
+      });
+      this._listenersAttached = true;
+    }
+
+    // Always re-render so grids fill correctly when container becomes visible
+    this.renderCalendar();
+    this.renderTimeGrid("start");
+    this.renderTimeGrid("end");
+  },
+
+  renderCalendar() {
+    const label = $("calMonthLabel");
+    if (label) label.textContent = `${this.MONTHS[this.currentMonth]} ${this.currentYear}`;
+
+    const grid = $("calDayGrid");
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    const firstDay = new Date(this.currentYear, this.currentMonth, 1).getDay();
+    const daysInMonth = new Date(this.currentYear, this.currentMonth + 1, 0).getDate();
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    // Empty cells before first day
+    for (let i = 0; i < firstDay; i++) {
+      const empty = document.createElement("div");
+      grid.appendChild(empty);
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = d;
+
+      const cellDate = new Date(this.currentYear, this.currentMonth, d);
+      const isPast = cellDate < today;
+      const isSelected = this.selectedDate &&
+        this.selectedDate.year === this.currentYear &&
+        this.selectedDate.month === this.currentMonth &&
+        this.selectedDate.day === d;
+
+      btn.className = [
+        "w-full aspect-square text-[10px] font-medium rounded transition leading-none",
+        isPast
+          ? "text-slate-700 cursor-not-allowed"
+          : isSelected
+            ? "bg-cyan-500 text-white font-bold shadow-[0_0_8px_rgba(6,182,212,0.5)]"
+            : "text-slate-400 hover:bg-slate-700/70 hover:text-white"
+      ].join(" ");
+
+      if (!isPast) {
+        btn.addEventListener("click", () => {
+          this.selectedDate = { year: this.currentYear, month: this.currentMonth, day: d };
+          this.renderCalendar();
+          this.updateSelectedDisplay();
+        });
+      } else {
+        btn.disabled = true;
+      }
+      grid.appendChild(btn);
+    }
+  },
+
+  renderTimeGrid(type) {
+    const gridId = type === "start" ? "calStartTimeGrid" : "calEndTimeGrid";
+    const selected = type === "start" ? this.selectedStart : this.selectedEnd;
+    const grid = $(gridId);
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    this.TIME_SLOTS.forEach(t => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = t;
+      const isSelected = selected === t;
+      btn.className = [
+        "px-1 py-1 text-[10px] font-medium rounded border transition leading-tight",
+        isSelected
+          ? "border-cyan-500 bg-cyan-500/20 text-cyan-300"
+          : "border-slate-700/80 bg-slate-900/80 text-slate-500 hover:border-slate-500 hover:text-slate-200"
+      ].join(" ");
+      btn.addEventListener("click", () => {
+        if (type === "start") {
+          this.selectedStart = t;
+          if ($("calStartTimeCustom")) $("calStartTimeCustom").value = t;
+          // Auto-set end to start + 30min if no end selected
+          if (!this.selectedEnd) {
+            const [h, m] = t.split(":").map(Number);
+            const total = h * 60 + m + 30;
+            const nextTime = `${String(Math.floor(total/60)).padStart(2,"0")}:${String(total%60).padStart(2,"0")}`;
+            if (this.TIME_SLOTS.includes(nextTime)) {
+              this.selectedEnd = nextTime;
+              if ($("calEndTimeCustom")) $("calEndTimeCustom").value = nextTime;
+              this.renderTimeGrid("end");
+            }
+          }
+        } else {
+          this.selectedEnd = t;
+          if ($("calEndTimeCustom")) $("calEndTimeCustom").value = t;
+        }
+        this.renderTimeGrid(type);
+      });
+      grid.appendChild(btn);
+    });
+  },
+
+  updateSelectedDisplay() {
+    const display = $("calSelectedDisplay");
+    const text = $("calSelectedText");
+    if (!display || !text || !this.selectedDate) return;
+    const { year, month, day } = this.selectedDate;
+    const d = new Date(year, month, day);
+    text.textContent = d.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    display.classList.remove("hidden");
+    display.classList.add("flex");
+  },
+
+  getSelection() {
+    return {
+      selectedDate:  this.selectedDate,
+      selectedStart: this.selectedStart || $("calStartTimeCustom")?.value || null,
+      selectedEnd:   this.selectedEnd   || $("calEndTimeCustom")?.value   || null,
+    };
+  },
+
+  setFromDate(date) {
+    this.currentYear  = date.getFullYear();
+    this.currentMonth = date.getMonth();
+    this.selectedDate = { year: date.getFullYear(), month: date.getMonth(), day: date.getDate() };
+    const h = String(date.getHours()).padStart(2,"0");
+    const m = String(date.getMinutes()).padStart(2,"0");
+    this.selectedStart = `${h}:${m}`;
+    if ($("calStartTimeCustom")) $("calStartTimeCustom").value = this.selectedStart;
+    // Default end = start + 30
+    const total = date.getHours() * 60 + date.getMinutes() + 30;
+    this.selectedEnd = `${String(Math.floor(total/60)).padStart(2,"0")}:${String(total%60).padStart(2,"0")}`;
+    if ($("calEndTimeCustom")) $("calEndTimeCustom").value = this.selectedEnd;
+    this.renderCalendar();
+    this.renderTimeGrid("start");
+    this.renderTimeGrid("end");
+    this.updateSelectedDisplay();
+  },
+
+  reset() {
+    this.selectedDate  = null;
+    this.selectedStart = null;
+    this.selectedEnd   = null;
+    if ($("calStartTimeCustom")) $("calStartTimeCustom").value = "";
+    if ($("calEndTimeCustom")) $("calEndTimeCustom").value = "";
+    const display = $("calSelectedDisplay");
+    if (display) { display.classList.add("hidden"); display.classList.remove("flex"); }
+    this.renderCalendar();
+    this.renderTimeGrid("start");
+    this.renderTimeGrid("end");
+  }
+};
+
 initAuth();
+

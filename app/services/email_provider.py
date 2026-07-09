@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from app.core.config import settings
 
@@ -14,9 +14,11 @@ class EmailProvider(Protocol):
         self,
         *,
         recipient_email: str,
+        recipient_name: str = "",
         subject: str,
         html_body: str,
         text_body: str,
+        appointment_data: dict[str, Any] | None = None,
     ) -> EmailSendResult:
         ...
 
@@ -30,9 +32,11 @@ class ResendEmailProvider:
         self,
         *,
         recipient_email: str,
+        recipient_name: str = "",
         subject: str,
         html_body: str,
         text_body: str,
+        appointment_data: dict[str, Any] | None = None,  # ignorado por Resend
     ) -> EmailSendResult:
         import resend
 
@@ -52,8 +56,14 @@ class ResendEmailProvider:
 
 
 def build_email_provider() -> EmailProvider | None:
-    if settings.email_provider != "resend":
-        return None
-    if not settings.resend_api_key:
-        return None
-    return ResendEmailProvider(settings.resend_api_key, settings.email_from)
+    if settings.email_provider == "resend":
+        if not settings.resend_api_key:
+            return None
+        return ResendEmailProvider(settings.resend_api_key, settings.email_from)
+    if settings.email_provider == "n8n":
+        from app.services.email_provider_n8n import N8nWebhookProvider
+        if not settings.n8n_webhook_url:
+            return None
+        return N8nWebhookProvider(settings.n8n_webhook_url)
+    return None
+
