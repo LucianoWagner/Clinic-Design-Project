@@ -981,7 +981,15 @@ async function sendMessage(text, inputMode = "text") {
 
       const body = await res.json().catch(() => ({}));
 
-      throw new Error(body.detail || `Error del servidor (${res.status})`);
+      let errorMsg = `Error del servidor (${res.status})`;
+      if (body.detail) {
+        if (Array.isArray(body.detail)) {
+          errorMsg = body.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join(', ');
+        } else if (typeof body.detail === 'string') {
+          errorMsg = body.detail;
+        }
+      }
+      throw new Error(errorMsg);
 
     }
 
@@ -2330,6 +2338,8 @@ const doctorPortal = {
   slots: [],
   currentFilter: "all",
   isInitialized: false,
+  pollingIntervalId: null,
+  mobileQrCodeInstance: null,
 
   init() {
     // Show user info
@@ -2368,6 +2378,16 @@ const doctorPortal = {
     // Setup calendar slot controls
     $("slotSubmitBtn")?.addEventListener("click", () => this.handleSlotSubmit());
     $("cancelSlotEditBtn")?.addEventListener("click", () => this.cancelSlotEdit());
+
+    // Setup QR Scanner Close listeners
+    $("qrCloseBtn")?.addEventListener("click", () => this.closeQRScanner());
+    $("qrCancelBtn")?.addEventListener("click", () => this.closeQRScanner());
+    $("qrTabCamera")?.addEventListener("click", () => this.switchQRTab("camera"));
+    $("qrTabMobile")?.addEventListener("click", () => this.switchQRTab("mobile"));
+    $("qrTabFile")?.addEventListener("click", () => this.switchQRTab("file"));
+    $("qrCameraSelect")?.addEventListener("change", (e) => this.handleCameraChange(e.target.value));
+    $("qrFileInput")?.addEventListener("change", (e) => this.handleQRFileSelected(e));
+    $("qrManualValidateBtn")?.addEventListener("click", () => this.handleManualValidation());
 
     // slotCalendar is initialized lazily when the slots tab is first shown
 
@@ -2492,7 +2512,16 @@ const doctorPortal = {
       btn.addEventListener("click", () => {
         const id = btn.dataset.id;
         const action = btn.dataset.action;
-        this.updateAppointmentStatus(id, action);
+        if (action === "finished") {
+          const app = this.appointments.find(a => String(a.id) === String(id));
+          if (app) {
+            this.openQRScanner(app);
+          } else {
+            console.error("Turno no encontrado para escanear QR", id);
+          }
+        } else {
+          this.updateAppointmentStatus(id, action);
+        }
       });
     });
   },
@@ -2516,6 +2545,433 @@ const doctorPortal = {
     } catch (err) {
       alert(err.message);
     }
+  },
+
+  html5QrCode: null,
+  isScanning: false,
+  currentQRApp: null,
+  currentQRTab: "camera",
+  availableCameras: [],
+  webcamStream: null,
+
+  async openQRScanner(app) {
+    this.currentQRApp = app;
+    this.currentQRTab = "camera";
+
+    const modal = $("qrScanModal");
+    const card = $("qrScanCard");
+    if (!modal || !card) return;
+
+    $("qrPatientName").textContent = app.patient_name;
+    const startsStr = parseApiDate(app.starts_at).toLocaleString("es-AR", {
+      weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
+    });
+    $("qrStartsAt").textContent = startsStr;
+
+    // Reset UI tabs to default
+    this.updateQRTabUI();
+
+    // Reset file and manual inputs
+    const fileInput = $("qrFileInput");
+    if (fileInput) fileInput.value = "";
+    
+    const fileNameEl = $("qrFileName");
+    if (fileNameEl) {
+      fileNameEl.textContent = "";
+      fileNameEl.classList.add("hidden");
+    }
+
+    const manualInput = $("qrManualCodeInput");
+    if (manualInput) manualInput.value = "";
+
+    // Clean up any old state first without triggering modal hide animation
+    await this.cleanupScanner();
+
+    // Generar el código QR para el escáner móvil
+    const container = $("qrMobileCodeContainer");
+    if (container) {
+      container.innerHTML = "";
+      const token = localStorage.getItem("token");
+      const mobileUrl = `${window.location.protocol}//${window.location.host}/mobile-scanner.html?app_id=${app.id}&auth=${encodeURIComponent(token)}`;
+      this.mobileQrCodeInstance = new QRCode(container, {
+        text: mobileUrl,
+        width: 180,
+        height: 180,
+        colorDark: "#0b0f19",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.H
+      });
+    }
+
+    // Comenzar a consultar el estado del turno por si se valida vía celular
+    this.startPollingStatus(app);
+
+    // Mostrar modal
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
+    setTimeout(() => {
+      card.classList.remove("scale-95", "opacity-0");
+      card.classList.add("scale-100", "opacity-100");
+    }, 50);
+
+    this.setQRScannerStatus("Inicializando cámara...", "info");
+
+    this.startWebcam(app);
+  },
+
+  startPollingStatus(app) {
+    if (this.pollingIntervalId) {
+      clearInterval(this.pollingIntervalId);
+    }
+
+    this.pollingIntervalId = setInterval(async () => {
+      try {
+        const res = await authFetch("/api/doctor/appointments");
+        if (res.ok) {
+          const appointments = await res.json();
+          const currentApp = appointments.find(a => String(a.id) === String(app.id));
+          if (currentApp && currentApp.status === "finished") {
+            clearInterval(this.pollingIntervalId);
+            this.pollingIntervalId = null;
+
+            this.setQRScannerStatus("¡Check-in exitoso vía dispositivo móvil! ✅", "success");
+
+            // Actualizar listados locales
+            const idx = this.appointments.findIndex(a => String(a.id) === String(app.id));
+            if (idx !== -1) {
+              this.appointments[idx] = currentApp;
+            }
+            this.renderAppointments();
+
+            setTimeout(() => {
+              this.closeQRScanner();
+            }, 1800);
+          }
+        }
+      } catch (err) {
+        console.warn("Error al consultar estado en segundo plano:", err);
+      }
+    }, 2000);
+  },
+
+  startWebcam(app, cameraId = null) {
+    if (!this.html5QrCode) {
+      this.html5QrCode = new Html5Qrcode("qrReader");
+    }
+
+    this.isScanning = true;
+    this.cameraScanningActive = false;
+    this.setQRScannerStatus("Iniciando cámara... Por favor, permití el acceso si el navegador lo solicita.", "info");
+
+    const config = {
+      fps: 15, // Aumentado para detección en tiempo real más rápida
+      qrbox: (width, height) => {
+        const min = Math.min(width, height);
+        const boxSize = Math.floor(min * 0.7);
+        return { width: boxSize, height: boxSize };
+      }
+    };
+
+    const targetCamera = cameraId ? { deviceId: { exact: cameraId } } : { facingMode: "environment" };
+
+    this.html5QrCode.start(
+      targetCamera,
+      config,
+      (decodedText) => {
+        // Escaneo exitoso automático: valida de una vez el código QR detectado
+        this.handleQRScanSuccess(app, decodedText);
+      },
+      (errorMessage) => {
+        // Se omiten los logs constantes del detector en progreso para evitar ruido
+      }
+    )
+    .then(() => {
+      this.cameraScanningActive = true;
+      this.setQRScannerStatus("Escaneando automáticamente... Enfocá el código QR.", "info");
+      this.queryAvailableCameras();
+    })
+    .catch(err => {
+      console.warn("Fallo cámara con facingMode environment, intentando frontal...", err);
+      if (!cameraId) {
+        this.html5QrCode.start(
+          { facingMode: "user" },
+          config,
+          (decodedText) => {
+            this.handleQRScanSuccess(app, decodedText);
+          },
+          (errorMessage) => {}
+        )
+        .then(() => {
+          this.cameraScanningActive = true;
+          this.setQRScannerStatus("Escaneando automáticamente... Enfocá el código QR.", "info");
+          this.queryAvailableCameras();
+        })
+        .catch(fallbackErr => {
+          console.error("Fallo definitivo de cámara:", fallbackErr);
+          this.setQRScannerStatus("Error de cámara. Por favor, usá la validación manual o subí el archivo.", "error");
+        });
+      } else {
+        this.setQRScannerStatus("Error al cargar la cámara seleccionada. Usá la validación manual o subí el archivo.", "error");
+      }
+    });
+  },
+
+  async queryAvailableCameras() {
+    const select = $("qrCameraSelect");
+    if (!select) return;
+
+    try {
+      const devices = await Html5Qrcode.getCameras();
+      this.availableCameras = devices || [];
+      
+      select.innerHTML = "";
+      if (this.availableCameras.length > 0) {
+        this.availableCameras.forEach(device => {
+          const opt = document.createElement("option");
+          opt.value = device.id;
+          opt.textContent = device.label || `Cámara ${select.children.length + 1}`;
+          select.appendChild(opt);
+        });
+
+        if (this.availableCameras.length > 1) {
+          select.classList.remove("hidden");
+        } else {
+          select.classList.add("hidden");
+        }
+      } else {
+        select.classList.add("hidden");
+      }
+    } catch (err) {
+      console.warn("No se pudieron listar las cámaras secundarias:", err);
+      select.classList.add("hidden");
+    }
+  },
+
+  async handleCameraChange(cameraId) {
+    if (!cameraId || !this.currentQRApp) return;
+    if (this.currentQRTab === "camera") {
+      await this.cleanupScanner();
+      this.startWebcam(this.currentQRApp, cameraId);
+    }
+  },
+
+  async switchQRTab(tab) {
+    if (this.currentQRTab === tab) return;
+    this.currentQRTab = tab;
+    this.updateQRTabUI();
+
+    if (tab !== "camera") {
+      await this.cleanupScanner();
+      
+      if (tab === "file") {
+        this.setQRScannerStatus("Seleccioná o tomá una foto del QR del paciente.", "info");
+      } else if (tab === "mobile") {
+        this.setQRScannerStatus("Escaneá el código de vinculación con tu celular.", "info");
+      }
+    } else {
+      if (this.currentQRApp) {
+        const select = $("qrCameraSelect");
+        const selectedCameraId = select ? select.value : null;
+        this.startWebcam(this.currentQRApp, selectedCameraId);
+      }
+    }
+  },
+
+  updateQRTabUI() {
+    const tabCam = $("qrTabCamera");
+    const tabMobile = $("qrTabMobile");
+    const tabFile = $("qrTabFile");
+    
+    const secCam = $("qrCameraSection");
+    const secMobile = $("qrMobileSection");
+    const secFile = $("qrFileSection");
+
+    const tabs = [
+      { tab: tabCam, sec: secCam, name: "camera" },
+      { tab: tabMobile, sec: secMobile, name: "mobile" },
+      { tab: tabFile, sec: secFile, name: "file" }
+    ];
+
+    tabs.forEach(t => {
+      if (!t.tab) return;
+      if (this.currentQRTab === t.name) {
+        t.tab.classList.add("border-cyan-500", "text-cyan-400");
+        t.tab.classList.remove("border-transparent", "text-slate-400");
+        t.sec?.classList.remove("hidden");
+      } else {
+        t.tab.classList.add("border-transparent", "text-slate-400");
+        t.tab.classList.remove("border-cyan-500", "text-cyan-400");
+        t.sec?.classList.add("hidden");
+      }
+    });
+  },
+
+  handleQRFileSelected(event) {
+    const file = event.target.files[0];
+    if (!file || !this.currentQRApp) return;
+
+    if (!this.html5QrCode) {
+      this.html5QrCode = new Html5Qrcode("qrReader");
+    }
+
+    const fileNameEl = $("qrFileName");
+    if (fileNameEl) {
+      fileNameEl.textContent = `Archivo: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+      fileNameEl.classList.remove("hidden");
+    }
+
+    this.setQRScannerStatus("Leyendo código QR desde el archivo...", "info");
+
+    this.isScanning = true;
+    this.html5QrCode.scanFile(file, true)
+      .then(decodedText => {
+        this.handleQRScanSuccess(this.currentQRApp, decodedText);
+      })
+      .catch(err => {
+        console.error("Error al escanear archivo:", err);
+        this.isScanning = false;
+        this.setQRScannerStatus("No se encontró un código QR válido. Asegurá una imagen nítida del código.", "error");
+      });
+  },
+
+  handleManualValidation() {
+    const input = $("qrManualCodeInput");
+    if (!input || !this.currentQRApp) return;
+
+    const value = input.value.trim();
+    if (!value) {
+      this.setQRScannerStatus("Por favor, ingresá un código de confirmación.", "error");
+      return;
+    }
+
+    this.isScanning = true;
+    this.handleQRScanSuccess(this.currentQRApp, value);
+  },
+
+  async handleQRScanSuccess(app, decodedText) {
+    if (!this.isScanning) return;
+    this.isScanning = false;
+
+    this.setQRScannerStatus("¡Código detectado! Validando ingreso...", "info");
+
+    // Detiene la cámara inmediatamente para liberar recursos al detectar el código
+    await this.cleanupScanner();
+
+    try {
+      const res = await authFetch(`/api/doctor/appointments/${app.id}/scan-finish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: decodedText.trim() })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || "QR inválido o error en la validación.");
+      }
+
+      this.setQRScannerStatus("¡Check-in exitoso! Turno finalizado ✅", "success");
+
+      // Actualizar listados locales
+      const updated = await res.json();
+      const idx = this.appointments.findIndex(a => String(a.id) === String(app.id));
+      if (idx !== -1) {
+        this.appointments[idx] = updated;
+      }
+      this.renderAppointments();
+
+      setTimeout(() => {
+        this.closeQRScanner();
+      }, 1800);
+
+    } catch (err) {
+      this.setQRScannerStatus(err.message, "error");
+    }
+  },
+
+  async cleanupScanner() {
+    this.isScanning = false;
+    
+    // Detiene la consulta de estado en segundo plano si está activa
+    if (this.pollingIntervalId) {
+      clearInterval(this.pollingIntervalId);
+      this.pollingIntervalId = null;
+    }
+
+    if (this.mobileQrCodeInstance) {
+      this.mobileQrCodeInstance = null;
+    }
+
+    // Detiene el escáner continuo si está activo
+    if (this.html5QrCode && this.cameraScanningActive) {
+      this.cameraScanningActive = false;
+      try {
+        await this.html5QrCode.stop();
+      } catch (err) {
+        console.warn("Error stopping html5QrCode camera:", err);
+      }
+    }
+
+    if (this.html5QrCode) {
+      try {
+        await this.html5QrCode.clear();
+      } catch (e) {}
+      this.html5QrCode = null;
+    }
+  },
+
+  async closeQRScanner() {
+    this.currentQRApp = null;
+    const modal = $("qrScanModal");
+    const card = $("qrScanCard");
+
+    if (card) {
+      card.classList.remove("scale-100", "opacity-100");
+      card.classList.add("scale-95", "opacity-0");
+    }
+
+    await this.cleanupScanner();
+
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        if (modal) {
+          modal.classList.remove("flex");
+          modal.classList.add("hidden");
+        }
+        resolve();
+      }, 300);
+    });
+  },
+
+  setQRScannerStatus(message, variant) {
+    const statusEl = $("qrScanStatus");
+    if (!statusEl) return;
+
+    statusEl.innerHTML = "";
+
+    let ringColor = "bg-slate-600";
+    let textClass = "text-slate-400 border-slate-800 bg-slate-950";
+
+    if (variant === "success") {
+      ringColor = "bg-emerald-500";
+      textClass = "text-emerald-400 border-emerald-500/20 bg-emerald-500/5";
+    } else if (variant === "error") {
+      ringColor = "bg-rose-500";
+      textClass = "text-rose-400 border-rose-500/20 bg-rose-500/5 animate-pulse";
+    } else if (variant === "info") {
+      ringColor = "bg-cyan-500";
+      textClass = "text-cyan-400 border-cyan-500/20 bg-cyan-500/5";
+    }
+
+    statusEl.className = `flex items-center justify-center gap-2 text-center rounded-xl p-3 text-sm font-medium border ${textClass} mb-5 transition-all`;
+
+    const dot = document.createElement("span");
+    dot.className = `w-2 h-2 rounded-full ${ringColor} ${variant === "info" ? "animate-ping" : ""}`;
+
+    const text = document.createElement("span");
+    text.textContent = message;
+
+    statusEl.appendChild(dot);
+    statusEl.appendChild(text);
   },
 
   async loadSlots() {

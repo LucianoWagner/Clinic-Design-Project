@@ -1,0 +1,96 @@
+{
+  "name": "n8n consultorio workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "confirm-appointment",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "90fdd8e3-753c-4445-a619-ea12b536bf55",
+      "name": "Webhook",
+      "webhookId": "8124857e-5e77-4a07-a9c9-79fb1e72d299"
+    },
+    {
+      "parameters": {
+        "fromEmail": "consultorioluchowag@gmail.com",
+        "toEmail": "={{ $json.body.recipient_email }}",
+        "subject": "={{ $json.body.subject }}",
+        "html": "=<!DOCTYPE html>\n\n<html lang=\"es\">\n<head>\n  <meta charset=\"UTF-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>Confirmación de turno</title>\n</head>\n\n<body style=\"margin:0; padding:0; background-color:#f3f6fb; font-family:Arial, Helvetica, sans-serif; color:#1f2937;\">\n\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background-color:#f3f6fb; padding:32px 0;\">\n    <tr>\n      <td align=\"center\">\n\n    <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:640px; background-color:#ffffff; border-radius:18px; overflow:hidden; box-shadow:0 12px 35px rgba(15, 23, 42, 0.12);\">\n\n      <!-- Header -->\n      <tr>\n        <td style=\"background:linear-gradient(135deg, #2563eb 0%, #0f766e 100%); padding:34px 32px; text-align:center;\">\n          <div style=\"font-size:14px; color:#dbeafe; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:10px;\">\n            Confirmación de turno\n          </div>\n\n          <h1 style=\"margin:0; color:#ffffff; font-size:28px; line-height:1.25; font-weight:700;\">\n            Tu turno fue confirmado\n          </h1>\n\n          <p style=\"margin:12px 0 0; color:#e0f2fe; font-size:16px; line-height:1.5;\">\n            Ya registramos correctamente la información de tu consulta.\n          </p>\n        </td>\n      </tr>\n\n      <!-- Main content -->\n      <tr>\n        <td style=\"padding:34px 32px 24px;\">\n\n          <p style=\"margin:0 0 18px; font-size:17px; line-height:1.6;\">\n            Hola <strong>{{ $json.body.recipient_name }}</strong>,\n          </p>\n\n          <p style=\"margin:0 0 24px; font-size:16px; line-height:1.7; color:#4b5563;\">\n            Te informamos que tu turno fue confirmado exitosamente. A continuación te dejamos el detalle de la reserva.\n          </p>\n\n          <!-- Confirmation card -->\n          <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background-color:#f8fafc; border:1px solid #e5e7eb; border-radius:14px; overflow:hidden; margin-bottom:26px;\">\n            <tr>\n              <td style=\"padding:22px 24px;\">\n\n                <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n                  <tr>\n                    <td style=\"padding-bottom:16px;\">\n                      <div style=\"font-size:13px; color:#64748b; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px;\">\n                        Código de confirmación\n                      </div>\n                      <div style=\"display:inline-block; background-color:#e0f2fe; color:#075985; padding:9px 14px; border-radius:999px; font-size:16px; font-weight:700; letter-spacing:0.03em;\">\n                        {{ $json.body.confirmation_code }}\n                      </div>\n                    </td>\n                  </tr>\n\n                  <tr>\n                    <td style=\"border-top:1px solid #e5e7eb; padding-top:18px;\">\n\n                      <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n                        <tr>\n                          <td style=\"padding:10px 0; width:42%; color:#64748b; font-size:14px;\">\n                            Profesional\n                          </td>\n                          <td style=\"padding:10px 0; color:#111827; font-size:15px; font-weight:600;\">\n                            {{ $json.body.doctor_name }}\n                          </td>\n                        </tr>\n\n                        <tr>\n                          <td style=\"padding:10px 0; color:#64748b; font-size:14px;\">\n                            Especialidad\n                          </td>\n                          <td style=\"padding:10px 0; color:#111827; font-size:15px; font-weight:600; text-transform:capitalize;\">\n                            {{ $json.body.specialty }}\n                          </td>\n                        </tr>\n\n                        <tr>\n                          <td style=\"padding:10px 0; color:#64748b; font-size:14px;\">\n                            Inicio\n                          </td>\n                          <td style=\"padding:10px 0; color:#111827; font-size:15px; font-weight:600;\">\n                            {{ $json.body.starts_at }}\n                          </td>\n                        </tr>\n\n                        <tr>\n                          <td style=\"padding:10px 0; color:#64748b; font-size:14px;\">\n                            Finalización estimada\n                          </td>\n                          <td style=\"padding:10px 0; color:#111827; font-size:15px; font-weight:600;\">\n                            {{ $json.body.ends_at }}\n                          </td>\n                        </tr>\n\n                        <tr>\n                          <td style=\"padding:10px 0; color:#64748b; font-size:14px;\">\n                            ID del turno\n                          </td>\n                          <td style=\"padding:10px 0; color:#111827; font-size:15px; font-weight:600;\">\n                            #{{ $json.body.appointment_id }}\n                          </td>\n                        </tr>\n                      </table>\n\n                    </td>\n                  </tr>\n                </table>\n\n              </td>\n            </tr>\n          </table>\n\n          <!-- QR Section -->\n          <table width=\"100%\" style=\"margin:24px 0; text-align:center;\">\n            <tr>\n              <td align=\"center\">\n                <p style=\"color:#4b5563; font-size:14px; margin-bottom:12px;\">\n                  Presentá este código QR al profesional al momento de la consulta:\n                </p>\n                <img src=\"https://api.qrserver.com/v1/create-qr-code/?size=180x180&data={{ $json.body.checkin_token }}\" alt=\"QR de check-in\" style=\"width:180px; height:180px; border-radius:12px; border:1px solid #e2e8f0; padding:8px; background-color:#ffffff;\" />\n                <p style=\"color:#9ca3af; font-size:12px; margin-top:8px;\">\n                  El profesional lo escaneará para confirmar tu asistencia.\n                </p>\n              </td>\n            </tr>\n          </table>\n\n          <!-- Notice -->\n          <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background-color:#ecfdf5; border:1px solid #bbf7d0; border-radius:12px; margin-bottom:24px;\">\n            <tr>\n              <td style=\"padding:16px 18px;\">\n                <p style=\"margin:0; color:#166534; font-size:15px; line-height:1.6;\">\n                  <strong>Importante:</strong> recordá presentarte unos minutos antes del horario indicado. Si necesitás cancelar o modificar el turno, comunicate con el consultorio.\n                </p>\n              </td>\n            </tr>\n          </table>\n\n          <!-- CTA style button, optional visual -->\n          <div style=\"text-align:center; margin:28px 0 8px;\">\n            <span style=\"display:inline-block; background-color:#2563eb; color:#ffffff; padding:13px 24px; border-radius:999px; font-size:15px; font-weight:700; text-decoration:none;\">\n              Turno confirmado\n            </span>\n          </div>\n\n        </td>\n      </tr>\n\n      <!-- Footer -->\n      <tr>\n        <td style=\"padding:22px 32px 30px; border-top:1px solid #e5e7eb; background-color:#fafafa; text-align:center;\">\n          <p style=\"margin:0 0 8px; color:#6b7280; font-size:13px; line-height:1.6;\">\n            Este correo fue enviado automáticamente. Por favor, no compartas tu código de confirmación con terceros.\n          </p>\n\n          <p style=\"margin:0; color:#9ca3af; font-size:12px; line-height:1.5;\">\n            Consultorio Médico · Sistema de gestión de turnos\n          </p>\n        </td>\n      </tr>\n\n    </table>\n\n  </td>\n</tr>\n\n  </table>\n\n</body>\n</html>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        250,
+        0
+      ],
+      "id": "479b8601-ab78-4f03-8fd2-cb83d0feec42",
+      "name": "Send an Email",
+      "webhookId": "0199f3d4-5fbf-4af3-bac3-dd9b137d82af",
+      "credentials": {
+        "smtp": {
+          "id": "X8ytdySxruT9rspm",
+          "name": "SMTP account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        500,
+        0
+      ],
+      "id": "26203008-4dc9-427f-80ca-4138611f2f7c",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Send an Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send an Email": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6879b7b0-f27b-44b1-b22e-23d572a29b63",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "05a3ce2d8d152be8c1f078a26466b1811a52c2f486138c6744eadfa7f01ead50"
+  },
+  "id": "8oJKCKya9Y38LOtg",
+  "tags": []
+}

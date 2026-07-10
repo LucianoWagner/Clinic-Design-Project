@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.core.config import settings
+from app.core.security import generate_checkin_token
 from app.models.appointment import Appointment, AppointmentSlot
 from app.models.doctor import Doctor, Specialty
 from app.models.enums import SlotStatus
@@ -14,6 +15,7 @@ from app.models.user import User
 from app.schemas.appointment import AppointmentRead, SlotRead
 from app.services.appointment_email_builder import AppointmentEmailBuilder
 from app.services.email_outbox_service import EmailOutboxService
+from app.services.qr_service import generate_checkin_qr
 
 
 class AppointmentConflictError(Exception):
@@ -174,9 +176,17 @@ class AppointmentService:
         self.session.add(slot)
         self.session.add(appointment)
         try:
-            self.session.flush()
+            self.session.flush()  # Necesario para obtener appointment.id
         except IntegrityError as exc:
             raise AppointmentConflictError("Ese turno ya fue confirmado.") from exc
+
+        # Generar y persistir el token de check-in en la misma transacción
+        checkin_token = generate_checkin_token(appointment.id or 0)
+        appointment.checkin_token = checkin_token
+        self.session.add(appointment)
+
+        # Generar QR como data URI base64 (en memoria, sin tocar disco)
+        qr_image_base64 = generate_checkin_qr(checkin_token)
 
         confirmation_code = f"TUR-{appointment.id}"
         email = AppointmentEmailBuilder().build(
@@ -185,6 +195,8 @@ class AppointmentService:
             specialty=specialty,
             slot=slot,
             confirmation_code=confirmation_code,
+            qr_image_base64=qr_image_base64,
+            checkin_token=checkin_token,
         )
         EmailOutboxService(self.session).enqueue_appointment_confirmation(
             appointment_id=appointment.id or 0,

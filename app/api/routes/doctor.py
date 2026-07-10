@@ -1,5 +1,7 @@
+import hmac
 from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from app.api.deps import get_session, require_role
@@ -15,6 +17,10 @@ from app.schemas.appointment import (
 )
 
 router = APIRouter(prefix="/doctor", tags=["doctor"])
+
+
+class ScanFinishRequest(BaseModel):
+    token: str
 
 
 def _get_doctor_profile(user_id: int, session: Session) -> Doctor:
@@ -268,3 +274,87 @@ def delete_doctor_slot(
     session.delete(slot)
     session.commit()
     return {"detail": "Horario eliminado correctamente."}
+
+
+@router.post("/appointments/{id}/scan-finish", response_model=DoctorAppointmentRead)
+def scan_finish_appointment(
+    id: int,
+    data: ScanFinishRequest,
+    current_user: User = Depends(require_role(UserRole.doctor)),
+    session: Session = Depends(get_session),
+):
+    """Finaliza un turno validando el QR escaneado por la webcam del doctor.
+
+    Validaciones:
+    1. El appointment pertenece al doctor autenticado.
+    2. El status es 'confirmed' (no cancelado ni ya finalizado).
+    3. El token enviado coincide con el checkin_token almacenado (comparación
+       en tiempo constante para evitar timing attacks).
+    """
+    doctor = _get_doctor_profile(current_user.id, session)
+
+    app = session.get(Appointment, id)
+    if not app or app.doctor_id != doctor.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Turno no encontrado.",
+        )
+
+    if app.status == AppointmentStatus.finished.value:
+        # Idempotente: si ya está finalizado, retornar éxito sin error
+        slot = session.get(AppointmentSlot, app.slot_id)
+        patient = session.get(User, app.user_id)
+        return DoctorAppointmentRead(
+            id=app.id or 0,
+            patient_name=patient.full_name if patient else "Paciente",
+            patient_email=patient.email if patient else "",
+            starts_at=slot.starts_at if slot else datetime.now(),
+            ends_at=slot.ends_at if slot else datetime.now(),
+            status=app.status,
+            confirmed_at=app.confirmed_at,
+        )
+
+    if app.status == AppointmentStatus.cancelled.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este turno fue cancelado y no puede ser finalizado.",
+        )
+
+    if app.status != AppointmentStatus.confirmed.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El turno tiene un estado inesperado: {app.status}.",
+        )
+
+    # Comparación en tiempo constante para prevenir timing side-channel attacks.
+    # Acepta tanto el token de checkin como el código de confirmación manual (ej: TUR-19).
+    stored_token = app.checkin_token or ""
+    confirmation_code = f"TUR-{app.id}"
+    
+    token_match = hmac.compare_digest(stored_token, data.token)
+    code_match = hmac.compare_digest(confirmation_code.upper(), data.token.upper().strip())
+
+    if not (token_match or code_match):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Código o QR inválido. El código no corresponde a este turno.",
+        )
+
+    # Todo válido: finalizar el turno
+    app.status = AppointmentStatus.finished.value
+    session.add(app)
+    session.commit()
+    session.refresh(app)
+
+    slot = session.get(AppointmentSlot, app.slot_id)
+    patient = session.get(User, app.user_id)
+
+    return DoctorAppointmentRead(
+        id=app.id or 0,
+        patient_name=patient.full_name if patient else "Paciente",
+        patient_email=patient.email if patient else "",
+        starts_at=slot.starts_at if slot else datetime.now(),
+        ends_at=slot.ends_at if slot else datetime.now(),
+        status=app.status,
+        confirmed_at=app.confirmed_at,
+    )

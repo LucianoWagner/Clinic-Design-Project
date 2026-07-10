@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Escáner de Check-in Móvil</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            slate: {
+              950: '#0b0f19',
+              900: '#111827',
+              800: '#1f2937',
+              700: '#374151',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Outfit', sans-serif;
+    }
+    .scan-laser-line {
+      animation: scan-laser 2s linear infinite;
+    }
+    @keyframes scan-laser {
+      0% { top: 0%; opacity: 0; }
+      5% { opacity: 1; }
+      95% { opacity: 1; }
+      100% { top: 100%; opacity: 0; }
+    }
+    #qrReader video {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
+      border-radius: 12px;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between p-4">
+  
+  <!-- Header -->
+  <header class="text-center py-4 border-b border-slate-900">
+    <h1 class="text-xl font-bold tracking-tight text-white flex items-center justify-center gap-2">
+      <span class="text-cyan-400">✦</span> Consultorio Inteligente
+    </h1>
+    <p class="text-xs text-slate-400 mt-1">Asistente de Check-in Móvil</p>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full my-6">
+    <div id="scannerCard" class="bg-slate-900 border border-slate-800/80 rounded-2xl p-6 w-full shadow-2xl space-y-4">
+      
+      <!-- Info Turno -->
+      <div id="appointmentInfo" class="bg-slate-950/60 border border-slate-800/50 rounded-xl p-3.5 text-center">
+        <span class="text-[10px] uppercase font-bold text-cyan-400 tracking-wider">Validando Turno</span>
+        <h2 id="patientName" class="text-base font-semibold text-white mt-0.5 font-sans">Cargando datos...</h2>
+      </div>
+
+      <!-- Visor de Cámara en Vivo -->
+      <div id="cameraArea" class="relative rounded-xl border border-slate-800 bg-slate-950 overflow-hidden aspect-[4/3] w-full flex items-center justify-center">
+        <div id="qrReader" class="w-full h-full"></div>
+        
+        <!-- Guía de escaneo -->
+        <div id="qrGuide" class="absolute inset-8 border-2 border-dashed border-cyan-500/40 rounded-lg pointer-events-none flex flex-col items-center justify-center">
+          <div class="absolute inset-0 bg-cyan-500/5 animate-pulse rounded-lg"></div>
+          <div class="absolute left-0 right-0 h-0.5 bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)] scan-laser-line"></div>
+          <span class="text-[10px] uppercase font-bold tracking-widest text-cyan-400 bg-slate-950/90 px-2 py-0.5 rounded shadow border border-slate-800/80">Centrá el QR del Paciente</span>
+        </div>
+      </div>
+
+      <!-- Botón de Cámara Nativa (Fallback Insecure Context HTTP) -->
+      <div id="mobileFileFallback" class="hidden space-y-2">
+        <button id="mobileFileBtn" type="button" class="w-full rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold py-3.5 px-4 text-sm uppercase tracking-wider transition active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-cyan-900/20">
+          <svg class="w-5 h-5 text-cyan-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM18 10.25h.008v.008H18V10.25Z" />
+          </svg>
+          Sacar Foto al QR del Paciente
+        </button>
+        <input type="file" id="mobileFileInput" accept="image/*" capture="environment" class="hidden">
+      </div>
+
+      <!-- Estado / Mensaje -->
+      <div id="scanStatus" class="flex items-center justify-center gap-2 text-center rounded-xl p-3.5 text-sm font-medium border border-slate-800 bg-slate-950 text-slate-400 transition-all">
+        <span id="statusDot" class="w-2 h-2 rounded-full bg-slate-600 animate-ping"></span>
+        <span id="statusText">Inicializando cámara...</span>
+      </div>
+
+      <!-- Fallback de Validación Manual -->
+      <div id="manualArea" class="pt-4 border-t border-slate-800/60">
+        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Ingresar Código Manualmente</label>
+        <div class="flex gap-2">
+          <input type="text" id="manualCodeInput" placeholder="Ej: TUR-19" class="flex-1 rounded-xl border border-slate-800 bg-slate-950 text-slate-100 text-sm px-3.5 py-2.5 outline-none focus:border-cyan-500/50 transition">
+          <button id="manualValidateBtn" class="rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold px-4 py-2.5 text-xs uppercase tracking-wider transition active:scale-[0.98]">
+            Validar
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Success Screen (Hidden by default) -->
+    <div id="successCard" class="hidden bg-slate-900 border border-emerald-500/20 rounded-2xl p-8 w-full shadow-2xl text-center space-y-4">
+      <div class="inline-flex items-center justify-center p-4 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 animate-bounce">
+        <svg class="w-10 h-10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+      </div>
+      <h2 class="text-xl font-bold text-white">¡Check-in Completado!</h2>
+      <p class="text-sm text-slate-400">El turno fue finalizado correctamente. Podés cerrar esta pestaña o volver a tu computadora.</p>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="text-center py-4 text-[10px] text-slate-600 border-t border-slate-900">
+    &copy; 2026 Consultorio Inteligente. Todos los derechos reservados.
+  </footer>
+
+  <!-- Librería html5-qrcode -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    let html5QrCode = null;
+    let cameraScanningActive = false;
+
+    // Parse URL params
+    const urlParams = new URLSearchParams(window.location.search);
+    const appId = urlParams.get("app_id");
+    const authToken = urlParams.get("auth");
+
+    if (!appId || !authToken) {
+      setStatus("Acceso denegado. Faltan parámetros de autenticación.", "error");
+      $("cameraArea").classList.add("hidden");
+      $("manualArea").classList.add("hidden");
+    } else {
+      // Fetch details of the appointment to show patient name
+      fetchAppointmentDetails();
+      startWebcam();
+    }
+
+    async function fetchAppointmentDetails() {
+      try {
+        const res = await fetch(`/api/doctor/appointments`, {
+          headers: { "Authorization": `Bearer ${authToken}` }
+        });
+        if (res.ok) {
+          const appointments = await res.json();
+          const app = appointments.find(a => String(a.id) === String(appId));
+          if (app) {
+            $("patientName").textContent = app.patient_name;
+          }
+        }
+      } catch (e) {
+        console.warn("No se pudieron cargar los detalles del turno:", e);
+      }
+    }
+
+    function setStatus(text, type = "info") {
+      const statusEl = $("scanStatus");
+      const dotEl = $("statusDot");
+      const textEl = $("statusText");
+
+      textEl.textContent = text;
+      statusEl.className = "flex items-center justify-center gap-2 text-center rounded-xl p-3.5 text-sm font-medium border mt-4 transition-all ";
+      dotEl.className = "w-2 h-2 rounded-full ";
+
+      if (type === "success") {
+        statusEl.classList.add("border-emerald-500/20", "bg-emerald-500/5", "text-emerald-400");
+        dotEl.classList.add("bg-emerald-400");
+      } else if (type === "error") {
+        statusEl.classList.add("border-red-500/20", "bg-red-500/5", "text-red-400");
+        dotEl.classList.add("bg-red-400");
+      } else {
+        statusEl.classList.add("border-slate-800", "bg-slate-950", "text-slate-400");
+        dotEl.classList.add("bg-slate-600", "animate-ping");
+      }
+    }
+
+    function startWebcam() {
+      html5QrCode = new Html5Qrcode("qrReader");
+      
+      const config = {
+        fps: 15,
+        qrbox: (width, height) => {
+          const min = Math.min(width, height);
+          const boxSize = Math.floor(min * 0.7);
+          return { width: boxSize, height: boxSize };
+        }
+      };
+
+      html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => {
+          validateCode(decodedText);
+        },
+        (errorMessage) => {}
+      )
+      .then(() => {
+        cameraScanningActive = true;
+        setStatus("Escaneando... Apuntá la cámara al QR del paciente.", "info");
+      })
+      .catch(err => {
+        console.warn("Fallo cámara principal, intentando frontal...", err);
+        html5QrCode.start(
+          { facingMode: "user" },
+          config,
+          (decodedText) => {
+            validateCode(decodedText);
+          },
+          (errorMessage) => {}
+        )
+        .then(() => {
+          cameraScanningActive = true;
+          setStatus("Escaneando (cámara frontal)... Apuntá al QR.", "info");
+        })
+        .catch(fallbackErr => {
+          console.error("Fallo definitivo de cámara:", fallbackErr);
+          setStatus("Cámara en vivo bloqueada por el navegador (HTTP local). ¡No te preocupes! Sacá una foto del QR usando el botón de abajo o ingresalo manualmente.", "error");
+          $("cameraArea").classList.add("hidden");
+          $("mobileFileFallback").classList.remove("hidden");
+        });
+      });
+    }
+
+    async function validateCode(code) {
+      if (html5QrCode && cameraScanningActive) {
+        cameraScanningActive = false;
+        try {
+          await html5QrCode.stop();
+        } catch (e) {}
+      }
+
+      setStatus("Validando ingreso...", "info");
+
+      try {
+        const res = await fetch(`/api/doctor/appointments/${appId}/scan-finish`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${authToken}`
+          },
+          body: JSON.stringify({ token: code.trim() })
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.detail || "Código inválido o ya utilizado.");
+        }
+
+        setStatus("¡Check-in exitoso!", "success");
+        $("scannerCard").classList.add("hidden");
+        $("successCard").classList.remove("hidden");
+
+      } catch (err) {
+        setStatus(err.message, "error");
+        // Restart scanning if it was webcam
+        if (cameraScanningActive) {
+          setTimeout(() => {
+            startWebcam();
+          }, 3000);
+        }
+      }
+    }
+
+    // Manual Validation
+    $("manualValidateBtn").addEventListener("click", () => {
+      const code = $("manualCodeInput").value.trim();
+      if (!code) {
+        setStatus("Por favor, ingresá un código.", "error");
+        return;
+      }
+      validateCode(code);
+    });
+
+    // Native Camera / File Upload Fallback
+    $("mobileFileBtn").addEventListener("click", () => {
+      $("mobileFileInput").click();
+    });
+
+    $("mobileFileInput").addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      setStatus("Procesando imagen...", "info");
+
+      if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("qrReader");
+      }
+
+      html5QrCode.scanFile(file, true)
+        .then(decodedText => {
+          validateCode(decodedText);
+        })
+        .catch(err => {
+          console.error("Error al escanear foto:", err);
+          setStatus("No se detectó un código QR válido en la foto. Asegurá que la imagen sea nítida y esté bien enfocada.", "error");
+        });
+    });
+  </script>
+</body>
+</html>

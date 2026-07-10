@@ -24,6 +24,26 @@ from app.core.logging import configure_logging
 configure_logging()
 
 
+# --- Parche defensivo para fastapi-limiter ---
+# Evita el error 'AttributeError: _IncludedRouter object has no attribute path'
+# causado por la estructura interna en versiones modernas de FastAPI al agrupar rutas.
+import fastapi_limiter.depends
+from fastapi import Request, Response
+original_limiter_call = fastapi_limiter.depends.RateLimiter.__call__
+
+async def safe_rate_limiter_call(self, request: Request, response: Response):
+    valid_routes = [r for r in request.app.routes if hasattr(r, "path") and hasattr(r, "methods")]
+    original_routes = request.app.router.routes
+    request.app.router.routes = valid_routes
+    try:
+        return await original_limiter_call(self, request, response)
+    finally:
+        request.app.router.routes = original_routes
+
+fastapi_limiter.depends.RateLimiter.__call__ = safe_rate_limiter_call
+# ---------------------------------------------
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Inicializa y cierra el checkpointer de LangGraph."""

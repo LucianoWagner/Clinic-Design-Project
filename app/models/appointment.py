@@ -39,4 +39,5 @@ class Appointment(SQLModel, table=True):
     status: str = Field(default=AppointmentStatus.confirmed.value, index=True)
     confirmation_source: str = Field(default="web_agent", max_length=80)
     confirmed_at: datetime = Field(default_factory=utcnow)
+    checkin_token: Optional[str] = Field(default=None, unique=True, index=True)
     created_at: datetime = Field(default_factory=utcnow)

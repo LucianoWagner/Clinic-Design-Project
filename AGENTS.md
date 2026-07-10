@@ -271,3 +271,25 @@ Tools disponibles:
   - Se modificó el endpoint `GET /api/doctor/slots` para filtrar y **excluir** aquellos slots que tienen `status = 'booked'`.
   - El médico ya no ve slots reservados en su panel de "Horarios disponibles" (estos ahora solo figuran de forma correcta en la pestaña de "Turnos con pacientes").
 
+### Fase 5.6 (Completada) - Escáner de Check-in Móvil Vinculado (Mobile Hand-off & Fallback)
+
+#### Problema del Contexto Seguro (Insecure Context HTTP en IPs Locales)
+- Los navegadores móviles bloquean el acceso a la API de cámaras web (`getUserMedia`) si el contexto es HTTP y no localhost. Al conectarse en desarrollo mediante la IP local (ej: `http://192.168.1.100:8000`), la cámara en vivo no puede iniciarse.
+
+#### Solución de Vinculación y Sincronización Automática
+1. **QR de Vinculación Móvil (Escritorio):**
+   - Se añadió la pestaña **"Escanear con Celular"** en el modal de verificación de QR en el portal de escritorio.
+   - Genera dinámicamente un código QR usando `qrcode.js` apuntando a: `http://<host>:<port>/mobile-scanner.html?app_id={app.id}&auth={JWT_TOKEN}`.
+   - Al mostrar el QR, el portal de escritorio inicia una consulta en segundo plano (`startPollingStatus`) cada 2 segundos. Cuando detecta que el turno cambió a `status = 'finished'`, actualiza la interfaz, notifica el check-in exitoso y cierra el modal.
+
+2. **Web App del Escáner Móvil (`mobile-scanner.html`):**
+   - Diseñada en `app/static/mobile-scanner.html` con diseño premium, responsivo y adaptado al esquema de colores Slate/Cyan.
+   - Intenta abrir la cámara trasera/frontal con `html5-qrcode`.
+   - **Fallback a Cámara Nativa (HTTP/Insecure Context):** Si la cámara web en vivo es rechazada por políticas del navegador, se oculta el visor de cámara y se despliega un botón prominente: **"Sacar Foto al QR del Paciente"** (`<input type="file" accept="image/*" capture="environment">`).
+   - Esto abre la cámara de fotos nativa del teléfono del médico, evadiendo las restricciones de HTTPS. Al tomar la foto, la librería procesa el archivo localmente (`html5QrCode.scanFile()`), decodifica el token, y lo valida vía API (`POST /api/doctor/appointments/{id}/scan-finish`).
+
+#### Convenciones Adicionales Para Agentes
+- En `index.html` la versión de cache-busting para `app.js` debe actualizarse cuando se realicen cambios en el portal de validación o el escáner móvil para evitar conflictos de caché.
+- Si se modifica la estructura del modal de validación, mantener las tres vías de check-in: cámara web, escaneo con celular (vinculación) y carga manual/archivo.
+
+

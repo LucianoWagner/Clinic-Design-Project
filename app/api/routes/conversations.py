@@ -2,7 +2,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, status
 from fastapi_limiter.depends import RateLimiter
 from sqlmodel import Session, select
 
@@ -91,6 +91,8 @@ async def delete_conversation(
 async def post_message(
     conversation_id: int,
     payload: MessageCreate,
+    request: Request,
+    response: Response,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
     checkpointer=Depends(get_checkpointer),

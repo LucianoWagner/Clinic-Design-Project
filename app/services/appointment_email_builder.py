@@ -27,6 +27,8 @@ class AppointmentEmailBuilder:
         specialty: Specialty,
         slot: AppointmentSlot,
         confirmation_code: str,
+        qr_image_base64: str | None = None,
+        checkin_token: str | None = None,
     ) -> AppointmentEmail:
         starts_at = slot.starts_at.strftime("%d/%m/%Y %H:%M")
         ends_at = slot.ends_at.strftime("%H:%M")
@@ -54,7 +56,7 @@ class AppointmentEmailBuilder:
           <p>Si necesitas modificarlo o cancelarlo, contacta al consultorio.</p>
         </div>
         """
-        appointment_data = {
+        appointment_data: dict = {
             "confirmation_code": confirmation_code,
             "doctor_name": doctor.full_name,
             "specialty": specialty.name,
@@ -62,6 +64,11 @@ class AppointmentEmailBuilder:
             "ends_at": ends_at,
             "appointment_id": None,  # Se completa al encolar en EmailOutboxService
         }
+        if qr_image_base64:
+            appointment_data["qr_image_base64"] = qr_image_base64
+        if checkin_token:
+            appointment_data["checkin_token"] = checkin_token
+
         return AppointmentEmail(
             recipient_email=user.email,
             recipient_name=user.full_name,

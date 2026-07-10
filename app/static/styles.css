@@ -35,3 +35,29 @@
 #messages::-webkit-scrollbar       { width: 4px; }
 #messages::-webkit-scrollbar-track { background: transparent; }
 #messages::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+/* ── QR Code Scanner Custom Styles ── */
+#qrReader {
+  width: 100% !important;
+  height: 100% !important;
+  position: relative !important;
+  overflow: hidden !important;
+  border-radius: 12px;
+}
+#qrReader video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border-radius: 12px;
+}
+
+/* laser scan animation line */
+@keyframes scan-laser {
+  0% { top: 0%; opacity: 0; }
+  5% { opacity: 1; }
+  95% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+.scan-laser-line {
+  animation: scan-laser 2.2s linear infinite;
+}
