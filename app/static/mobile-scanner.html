@@ -35,6 +35,18 @@
       95% { opacity: 1; }
       100% { top: 100%; opacity: 0; }
     }
+    #qrReader, #qrReader * {
+      box-sizing: border-box;
+    }
+    #qrReader {
+      width: 100% !important;
+      height: 100% !important;
+      border: none !important;
+    }
+    #qrReader > div {
+      width: 100% !important;
+      height: 100% !important;
+    }
     #qrReader video {
       width: 100% !important;
       height: 100% !important;
@@ -135,10 +147,12 @@
     const appId = urlParams.get("app_id");
     const authToken = urlParams.get("auth");
 
-    if (!appId || !authToken) {
-      setStatus("Acceso denegado. Faltan parámetros de autenticación.", "error");
+    if (!appId || !authToken || authToken === "null" || authToken === "undefined") {
+      setStatus("Acceso denegado. Token de autenticación inválido o inexistente. Por favor, recargá la página de la notebook y volvé a escanear el QR de vinculación.", "error");
       $("cameraArea").classList.add("hidden");
       $("manualArea").classList.add("hidden");
+      $("mobileFileFallback").classList.add("hidden");
+      $("patientName").textContent = "Error de Autenticación";
     } else {
       // Fetch details of the appointment to show patient name
       fetchAppointmentDetails();
@@ -155,10 +169,20 @@
           const app = appointments.find(a => String(a.id) === String(appId));
           if (app) {
             $("patientName").textContent = app.patient_name;
+          } else {
+            $("patientName").textContent = "Turno no encontrado";
+            setStatus("El turno especificado no existe o no pertenece a tu perfil.", "error");
           }
+        } else if (res.status === 401) {
+          $("patientName").textContent = "No autorizado";
+          setStatus("Sesión no autorizada. Por favor, iniciá sesión nuevamente en la notebook y escaneá el QR de vinculación nuevo.", "error");
+        } else {
+          $("patientName").textContent = "Error al cargar datos";
+          setStatus(`Error al obtener detalles del turno (Status: ${res.status}).`, "error");
         }
       } catch (e) {
         console.warn("No se pudieron cargar los detalles del turno:", e);
+        setStatus("Error de conexión al cargar datos del turno.", "error");
       }
     }
 
@@ -231,6 +255,7 @@
     }
 
     async function validateCode(code) {
+      const wasScanning = cameraScanningActive;
       if (html5QrCode && cameraScanningActive) {
         cameraScanningActive = false;
         try {
@@ -262,7 +287,7 @@
       } catch (err) {
         setStatus(err.message, "error");
         // Restart scanning if it was webcam
-        if (cameraScanningActive) {
+        if (wasScanning) {
           setTimeout(() => {
             startWebcam();
           }, 3000);
@@ -285,24 +310,52 @@
       $("mobileFileInput").click();
     });
 
-    $("mobileFileInput").addEventListener("change", (event) => {
+    $("mobileFileInput").addEventListener("change", async (event) => {
       const file = event.target.files[0];
       if (!file) return;
 
-      setStatus("Procesando imagen...", "info");
-
-      if (!html5QrCode) {
-        html5QrCode = new Html5Qrcode("qrReader");
+      const wasScanning = cameraScanningActive;
+      if (html5QrCode && cameraScanningActive) {
+        cameraScanningActive = false;
+        try {
+          await html5QrCode.stop();
+        } catch (e) {}
       }
 
-      html5QrCode.scanFile(file, true)
-        .then(decodedText => {
-          validateCode(decodedText);
-        })
-        .catch(err => {
-          console.error("Error al escanear foto:", err);
-          setStatus("No se detectó un código QR válido en la foto. Asegurá que la imagen sea nítida y esté bien enfocada.", "error");
+      setStatus("Subiendo y decodificando foto en el servidor...", "info");
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const res = await fetch(`/api/doctor/appointments/${appId}/scan-upload`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${authToken}`
+          },
+          body: formData
         });
+
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.detail || "No se detectó un código QR válido en la foto.");
+        }
+
+        setStatus("¡Check-in exitoso!", "success");
+        $("scannerCard").classList.add("hidden");
+        $("successCard").classList.remove("hidden");
+
+      } catch (err) {
+        console.error("Error al validar foto via API:", err);
+        setStatus(err.message, "error");
+        
+        // Reactivar cámara web si estaba encendida
+        if (wasScanning) {
+          setTimeout(() => {
+            startWebcam();
+          }, 3000);
+        }
+      }
     });
   </script>
 </body>

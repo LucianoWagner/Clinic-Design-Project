@@ -22,6 +22,7 @@ dependencies = [
   "resend>=2.4.0",
   "sqlmodel>=0.0.22",
   "uvicorn[standard]>=0.30.6",
+  "zxing-cpp>=2.2.0",
 ]
 
 [project.optional-dependencies]

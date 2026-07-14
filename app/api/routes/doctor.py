@@ -1,6 +1,9 @@
 import hmac
 from datetime import UTC, datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+import io
+import zxingcpp
+from PIL import Image
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -338,6 +341,103 @@ def scan_finish_appointment(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Código o QR inválido. El código no corresponde a este turno.",
+        )
+
+    # Todo válido: finalizar el turno
+    app.status = AppointmentStatus.finished.value
+    session.add(app)
+    session.commit()
+    session.refresh(app)
+
+    slot = session.get(AppointmentSlot, app.slot_id)
+    patient = session.get(User, app.user_id)
+
+    return DoctorAppointmentRead(
+        id=app.id or 0,
+        patient_name=patient.full_name if patient else "Paciente",
+        patient_email=patient.email if patient else "",
+        starts_at=slot.starts_at if slot else datetime.now(),
+        ends_at=slot.ends_at if slot else datetime.now(),
+        status=app.status,
+        confirmed_at=app.confirmed_at,
+    )
+
+
+@router.post("/appointments/{id}/scan-upload", response_model=DoctorAppointmentRead)
+def scan_upload_appointment(
+    id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_role(UserRole.doctor)),
+    session: Session = Depends(get_session),
+):
+    """Finaliza un turno leyendo el QR desde un archivo de imagen subido.
+    Decodifica el QR usando zxing-cpp en el servidor.
+    """
+    doctor = _get_doctor_profile(current_user.id, session)
+
+    app = session.get(Appointment, id)
+    if not app or app.doctor_id != doctor.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Turno no encontrado.",
+        )
+
+    # Convertir archivo a imagen PIL
+    try:
+        image_bytes = file.file.read()
+        image = Image.open(io.BytesIO(image_bytes))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se pudo procesar la imagen subida. Asegúrese de que sea un archivo de imagen válido.",
+        )
+
+    # Decodificar QR
+    results = zxingcpp.read_barcodes(image)
+    if not results:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No se detectó ningún código QR en la imagen. Intente sacar la foto más de cerca o con mejor iluminación.",
+        )
+
+    decoded_token = results[0].text
+
+    # Validar el token decodificado
+    if app.status == AppointmentStatus.finished.value:
+        slot = session.get(AppointmentSlot, app.slot_id)
+        patient = session.get(User, app.user_id)
+        return DoctorAppointmentRead(
+            id=app.id or 0,
+            patient_name=patient.full_name if patient else "Paciente",
+            patient_email=patient.email if patient else "",
+            starts_at=slot.starts_at if slot else datetime.now(),
+            ends_at=slot.ends_at if slot else datetime.now(),
+            status=app.status,
+            confirmed_at=app.confirmed_at,
+        )
+
+    if app.status == AppointmentStatus.cancelled.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este turno fue cancelado y no puede ser finalizado.",
+        )
+
+    if app.status != AppointmentStatus.confirmed.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El turno tiene un estado inesperado: {app.status}.",
+        )
+
+    stored_token = app.checkin_token or ""
+    confirmation_code = f"TUR-{app.id}"
+
+    token_match = hmac.compare_digest(stored_token, decoded_token)
+    code_match = hmac.compare_digest(confirmation_code.upper(), decoded_token.upper().strip())
+
+    if not (token_match or code_match):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Código o QR decodificado inválido. El QR leído no corresponde a este turno.",
         )
 
     # Todo válido: finalizar el turno

@@ -37,12 +37,17 @@
 #messages::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
 
 /* ── QR Code Scanner Custom Styles ── */
+#qrReader, #qrReader * {
+  box-sizing: border-box;
+}
 #qrReader {
   width: 100% !important;
   height: 100% !important;
-  position: relative !important;
-  overflow: hidden !important;
-  border-radius: 12px;
+  border: none !important;
+}
+#qrReader > div {
+  width: 100% !important;
+  height: 100% !important;
 }
 #qrReader video {
   width: 100% !important;

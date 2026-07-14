@@ -2382,10 +2382,8 @@ const doctorPortal = {
     // Setup QR Scanner Close listeners
     $("qrCloseBtn")?.addEventListener("click", () => this.closeQRScanner());
     $("qrCancelBtn")?.addEventListener("click", () => this.closeQRScanner());
-    $("qrTabCamera")?.addEventListener("click", () => this.switchQRTab("camera"));
     $("qrTabMobile")?.addEventListener("click", () => this.switchQRTab("mobile"));
     $("qrTabFile")?.addEventListener("click", () => this.switchQRTab("file"));
-    $("qrCameraSelect")?.addEventListener("change", (e) => this.handleCameraChange(e.target.value));
     $("qrFileInput")?.addEventListener("change", (e) => this.handleQRFileSelected(e));
     $("qrManualValidateBtn")?.addEventListener("click", () => this.handleManualValidation());
 
@@ -2550,13 +2548,13 @@ const doctorPortal = {
   html5QrCode: null,
   isScanning: false,
   currentQRApp: null,
-  currentQRTab: "camera",
+  currentQRTab: "mobile",
   availableCameras: [],
   webcamStream: null,
 
   async openQRScanner(app) {
     this.currentQRApp = app;
-    this.currentQRTab = "camera";
+    this.currentQRTab = "mobile";
 
     const modal = $("qrScanModal");
     const card = $("qrScanCard");
@@ -2591,7 +2589,7 @@ const doctorPortal = {
     const container = $("qrMobileCodeContainer");
     if (container) {
       container.innerHTML = "";
-      const token = localStorage.getItem("token");
+      const token = authToken || localStorage.getItem("accessToken");
       const mobileUrl = `${window.location.protocol}//${window.location.host}/mobile-scanner.html?app_id=${app.id}&auth=${encodeURIComponent(token)}`;
       this.mobileQrCodeInstance = new QRCode(container, {
         text: mobileUrl,
@@ -2614,9 +2612,6 @@ const doctorPortal = {
       card.classList.add("scale-100", "opacity-100");
     }, 50);
 
-    this.setQRScannerStatus("Inicializando cámara...", "info");
-
-    this.startWebcam(app);
   },
 
   startPollingStatus(app) {
@@ -2654,140 +2649,30 @@ const doctorPortal = {
     }, 2000);
   },
 
-  startWebcam(app, cameraId = null) {
-    if (!this.html5QrCode) {
-      this.html5QrCode = new Html5Qrcode("qrReader");
-    }
 
-    this.isScanning = true;
-    this.cameraScanningActive = false;
-    this.setQRScannerStatus("Iniciando cámara... Por favor, permití el acceso si el navegador lo solicita.", "info");
-
-    const config = {
-      fps: 15, // Aumentado para detección en tiempo real más rápida
-      qrbox: (width, height) => {
-        const min = Math.min(width, height);
-        const boxSize = Math.floor(min * 0.7);
-        return { width: boxSize, height: boxSize };
-      }
-    };
-
-    const targetCamera = cameraId ? { deviceId: { exact: cameraId } } : { facingMode: "environment" };
-
-    this.html5QrCode.start(
-      targetCamera,
-      config,
-      (decodedText) => {
-        // Escaneo exitoso automático: valida de una vez el código QR detectado
-        this.handleQRScanSuccess(app, decodedText);
-      },
-      (errorMessage) => {
-        // Se omiten los logs constantes del detector en progreso para evitar ruido
-      }
-    )
-    .then(() => {
-      this.cameraScanningActive = true;
-      this.setQRScannerStatus("Escaneando automáticamente... Enfocá el código QR.", "info");
-      this.queryAvailableCameras();
-    })
-    .catch(err => {
-      console.warn("Fallo cámara con facingMode environment, intentando frontal...", err);
-      if (!cameraId) {
-        this.html5QrCode.start(
-          { facingMode: "user" },
-          config,
-          (decodedText) => {
-            this.handleQRScanSuccess(app, decodedText);
-          },
-          (errorMessage) => {}
-        )
-        .then(() => {
-          this.cameraScanningActive = true;
-          this.setQRScannerStatus("Escaneando automáticamente... Enfocá el código QR.", "info");
-          this.queryAvailableCameras();
-        })
-        .catch(fallbackErr => {
-          console.error("Fallo definitivo de cámara:", fallbackErr);
-          this.setQRScannerStatus("Error de cámara. Por favor, usá la validación manual o subí el archivo.", "error");
-        });
-      } else {
-        this.setQRScannerStatus("Error al cargar la cámara seleccionada. Usá la validación manual o subí el archivo.", "error");
-      }
-    });
-  },
-
-  async queryAvailableCameras() {
-    const select = $("qrCameraSelect");
-    if (!select) return;
-
-    try {
-      const devices = await Html5Qrcode.getCameras();
-      this.availableCameras = devices || [];
-      
-      select.innerHTML = "";
-      if (this.availableCameras.length > 0) {
-        this.availableCameras.forEach(device => {
-          const opt = document.createElement("option");
-          opt.value = device.id;
-          opt.textContent = device.label || `Cámara ${select.children.length + 1}`;
-          select.appendChild(opt);
-        });
-
-        if (this.availableCameras.length > 1) {
-          select.classList.remove("hidden");
-        } else {
-          select.classList.add("hidden");
-        }
-      } else {
-        select.classList.add("hidden");
-      }
-    } catch (err) {
-      console.warn("No se pudieron listar las cámaras secundarias:", err);
-      select.classList.add("hidden");
-    }
-  },
-
-  async handleCameraChange(cameraId) {
-    if (!cameraId || !this.currentQRApp) return;
-    if (this.currentQRTab === "camera") {
-      await this.cleanupScanner();
-      this.startWebcam(this.currentQRApp, cameraId);
-    }
-  },
 
   async switchQRTab(tab) {
     if (this.currentQRTab === tab) return;
     this.currentQRTab = tab;
     this.updateQRTabUI();
 
-    if (tab !== "camera") {
-      await this.cleanupScanner();
-      
-      if (tab === "file") {
-        this.setQRScannerStatus("Seleccioná o tomá una foto del QR del paciente.", "info");
-      } else if (tab === "mobile") {
-        this.setQRScannerStatus("Escaneá el código de vinculación con tu celular.", "info");
-      }
-    } else {
-      if (this.currentQRApp) {
-        const select = $("qrCameraSelect");
-        const selectedCameraId = select ? select.value : null;
-        this.startWebcam(this.currentQRApp, selectedCameraId);
-      }
+    await this.cleanupScanner();
+    
+    if (tab === "file") {
+      this.setQRScannerStatus("Seleccioná o tomá una foto del QR del paciente.", "info");
+    } else if (tab === "mobile") {
+      this.setQRScannerStatus("Escaneá el código de vinculación con tu celular.", "info");
     }
   },
 
   updateQRTabUI() {
-    const tabCam = $("qrTabCamera");
     const tabMobile = $("qrTabMobile");
     const tabFile = $("qrTabFile");
     
-    const secCam = $("qrCameraSection");
     const secMobile = $("qrMobileSection");
     const secFile = $("qrFileSection");
 
     const tabs = [
-      { tab: tabCam, sec: secCam, name: "camera" },
       { tab: tabMobile, sec: secMobile, name: "mobile" },
       { tab: tabFile, sec: secFile, name: "file" }
     ];
@@ -2806,13 +2691,9 @@ const doctorPortal = {
     });
   },
 
-  handleQRFileSelected(event) {
+  async handleQRFileSelected(event) {
     const file = event.target.files[0];
     if (!file || !this.currentQRApp) return;
-
-    if (!this.html5QrCode) {
-      this.html5QrCode = new Html5Qrcode("qrReader");
-    }
 
     const fileNameEl = $("qrFileName");
     if (fileNameEl) {
@@ -2820,18 +2701,44 @@ const doctorPortal = {
       fileNameEl.classList.remove("hidden");
     }
 
-    this.setQRScannerStatus("Leyendo código QR desde el archivo...", "info");
+    this.setQRScannerStatus("Subiendo y decodificando foto en el servidor...", "info");
+
+    const formData = new FormData();
+    formData.append("file", file);
 
     this.isScanning = true;
-    this.html5QrCode.scanFile(file, true)
-      .then(decodedText => {
-        this.handleQRScanSuccess(this.currentQRApp, decodedText);
-      })
-      .catch(err => {
-        console.error("Error al escanear archivo:", err);
-        this.isScanning = false;
-        this.setQRScannerStatus("No se encontró un código QR válido. Asegurá una imagen nítida del código.", "error");
+    await this.cleanupScanner();
+
+    try {
+      const res = await authFetch(`/api/doctor/appointments/${this.currentQRApp.id}/scan-upload`, {
+        method: "POST",
+        body: formData
       });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || "No se detectó un código QR válido en la foto.");
+      }
+
+      const updated = await res.json();
+      this.setQRScannerStatus("¡Check-in exitoso! Turno finalizado ✅", "success");
+
+      // Actualizar listados locales
+      const idx = this.appointments.findIndex(a => String(a.id) === String(this.currentQRApp.id));
+      if (idx !== -1) {
+        this.appointments[idx] = updated;
+      }
+      this.renderAppointments();
+
+      setTimeout(() => {
+        this.closeQRScanner();
+      }, 1800);
+
+    } catch (err) {
+      console.error("Error al validar foto via API:", err);
+      this.isScanning = false;
+      this.setQRScannerStatus(err.message, "error");
+    }
   },
 
   handleManualValidation() {

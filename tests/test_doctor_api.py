@@ -203,3 +203,51 @@ def test_doctor_appointments_flow(client: TestClient) -> None:
     session.expire_all()
     slot_db = session.get(AppointmentSlot, slot.id)
     assert slot_db.status == SlotStatus.cancelled.value
+
+
+def test_doctor_scan_upload(client: TestClient) -> None:
+    data = _setup_doctor_and_patient(client)
+    doc_headers = {"Authorization": f"Bearer {data['doctor_token']}"}
+    
+    session = next(app.dependency_overrides[get_session]())
+    
+    slot = AppointmentSlot(
+        doctor_id=data["doctor_id"],
+        starts_at=datetime.now(UTC) + timedelta(days=1),
+        ends_at=datetime.now(UTC) + timedelta(days=1, minutes=30),
+        status=SlotStatus.booked.value
+    )
+    session.add(slot)
+    session.flush()
+    
+    checkin_token = "ABC123XYZ"
+    appt = Appointment(
+        user_id=data["patient_user_id"],
+        doctor_id=data["doctor_id"],
+        slot_id=slot.id,
+        status=AppointmentStatus.confirmed.value,
+        checkin_token=checkin_token
+    )
+    session.add(appt)
+    session.commit()
+
+    # Generate a QR code image
+    import qrcode
+    import io
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(checkin_token)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format="PNG")
+    img_bytes.seek(0)
+    
+    response = client.post(
+        f"/api/doctor/appointments/{appt.id}/scan-upload",
+        files={"file": ("qrcode.png", img_bytes, "image/png")},
+        headers=doc_headers
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == AppointmentStatus.finished.value
+

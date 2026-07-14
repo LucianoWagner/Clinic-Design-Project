@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=3" />
+  <link rel="stylesheet" href="/styles.css?v=4" />
 </head>
 
 <body class="h-full bg-slate-950 font-sans antialiased overflow-hidden">
@@ -584,34 +584,12 @@
 
       <!-- Tabs de Escaneo -->
       <div class="flex border-b border-slate-800 mb-3 text-center">
-        <button id="qrTabCamera" type="button" class="flex-1 pb-2 text-xs font-bold uppercase tracking-wider border-b-2 border-cyan-500 text-cyan-400 transition-all duration-200">
-          Cámara Web
-        </button>
-        <button id="qrTabMobile" type="button" class="flex-1 pb-2 text-xs font-bold uppercase tracking-wider border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-all duration-200">
+        <button id="qrTabMobile" type="button" class="flex-1 pb-2 text-xs font-bold uppercase tracking-wider border-b-2 border-cyan-500 text-cyan-400 transition-all duration-200">
           Escanear con Celular
         </button>
         <button id="qrTabFile" type="button" class="flex-1 pb-2 text-xs font-bold uppercase tracking-wider border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-all duration-200">
           Subir Archivo
         </button>
-      </div>
-
-      <!-- Sección de Cámara en Vivo -->
-      <div id="qrCameraSection" class="space-y-2">
-        <!-- Selector de Cámara (Visible solo si hay múltiples cámaras disponibles) -->
-        <select id="qrCameraSelect" class="w-full hidden rounded-xl border border-slate-800 bg-slate-950 text-slate-300 text-xs px-3 py-2 outline-none focus:border-cyan-500/50 transition"></select>
-
-        <!-- Contenedor del video html5-qrcode -->
-        <div class="relative rounded-xl border border-slate-800 bg-slate-950 overflow-hidden aspect-[4/3] max-h-[220px] w-full mb-3 flex items-center justify-center">
-          <div id="qrReader" class="w-full h-full"></div>
-          
-          <!-- Overlay de guía de escaneo -->
-          <div id="qrGuide" class="absolute inset-6 sm:inset-10 border-2 border-dashed border-cyan-500/50 rounded-lg pointer-events-none flex flex-col items-center justify-center">
-            <div class="absolute inset-0 bg-cyan-500/5 animate-pulse rounded-lg"></div>
-            <!-- Laser animado (CSS) -->
-            <div class="absolute left-0 right-0 h-0.5 bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)] scan-laser-line"></div>
-            <span class="text-[10px] uppercase font-bold tracking-widest text-cyan-400 bg-slate-950/90 px-2 py-0.5 rounded shadow border border-slate-800/80">Centrá el QR</span>
-          </div>
-        </div>
       </div>
 
       <!-- Sección de Escanear con Celular -->
@@ -677,6 +655,6 @@
   <!-- Librerías de QR (Generador y Lector) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-  <script src="/app.js?v=42"></script>
+  <script src="/app.js?v=45"></script>
 </body>
 </html>

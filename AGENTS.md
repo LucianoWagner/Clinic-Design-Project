@@ -286,10 +286,39 @@ Tools disponibles:
    - Diseñada en `app/static/mobile-scanner.html` con diseño premium, responsivo y adaptado al esquema de colores Slate/Cyan.
    - Intenta abrir la cámara trasera/frontal con `html5-qrcode`.
    - **Fallback a Cámara Nativa (HTTP/Insecure Context):** Si la cámara web en vivo es rechazada por políticas del navegador, se oculta el visor de cámara y se despliega un botón prominente: **"Sacar Foto al QR del Paciente"** (`<input type="file" accept="image/*" capture="environment">`).
-   - Esto abre la cámara de fotos nativa del teléfono del médico, evadiendo las restricciones de HTTPS. Al tomar la foto, la librería procesa el archivo localmente (`html5QrCode.scanFile()`), decodifica el token, y lo valida vía API (`POST /api/doctor/appointments/{id}/scan-finish`).
+   - Esto abre la cámara de fotos nativa del### Fase 5.7 (Completada) - Corrección de Autenticación, Reintentos, Remoción de Webcam PC y Validación de QR Móvil en Servidor
+
+#### Corrección del Token en QR de Vinculación (`auth=null`)
+- **Problema**: El QR de vinculación se generaba con `auth=null` porque `app.js` intentaba buscar la clave obsoleta `"token"` en `localStorage`. Esto causaba que todas las peticiones desde el celular devolvieran `401 Unauthorized`.
+- **Solución**: Se actualizó `app.js` para usar la variable global reactiva `authToken` y fallback a `localStorage.getItem("accessToken")`. Se incrementaron las versiones de cache-busting en `index.html` (`app.js?v=44` y `styles.css?v=4`) para forzar la recarga del JS.
+- **Validación Móvil**: En `mobile-scanner.html` se agregaron validaciones explícitas para capturar si el token llega como string `"null"` o `"undefined"`, guiando al usuario a refrescar la notebook en lugar de fallar silenciosamente.
+
+#### Mejora en Reintentos de Cámara
+- **Solución**: Corregido un bug en `validateCode()` en `mobile-scanner.html` donde el indicador `cameraScanningActive` se limpiaba antes de evaluar el reintento, impidiendo que la cámara web se reiniciara tras un intento fallido. Ahora se almacena el estado previo en `wasScanning` y la cámara se reactiva automáticamente pasados 3 segundos.
+
+#### Alineación y Optimización de la Cámara Web
+- **Problema**: `html5-qrcode` inyectaba contenedores y elementos de video con dimensiones fijas en píxeles que desbordaban y deformaban el viewport en pantallas móviles (causando fallos en la detección del QR).
+- **Solución**: Se agregaron selectores en `styles.css` y `mobile-scanner.html` para forzar a que todos los elementos generados dentro de `#qrReader` sean responsivos (`width: 100% !important`, `height: 100% !important`, `object-fit: cover !important`). Esto asegura que la guía de escaneo esté perfectamente alineada con el centro del video y que el algoritmo decodifique el QR sin distorsión.
+
+#### Remoción de Cámara Web Local en PC
+- **Requerimiento**: El médico solicitó remover el escaneo directo por webcam en la computadora (PC) debido a redundancia y conflictos de permisos de cámara locales.
+- **Solución**: Se eliminó el botón de tabulado `qrTabCamera` y el contenedor `#qrCameraSection` de `index.html`. En `app.js` se eliminaron de manera limpia los métodos `startWebcam()`, `queryAvailableCameras()`, y `handleCameraChange()`. El modal ahora abre directamente en la pestaña "Escanear con Celular" (`mobile`) por defecto.
+
+#### Decodificación y Validación de QR en Servidor (Móvil y Escritorio)
+- **Problema**: Las fotos del monitor tomadas por celulares de alta resolución (como el Samsung S24) o capturas/archivos locales pueden fallar en el navegador debido a diferencias de renderizado o ruido.
+- **Solución**: Se implementó el endpoint `POST /api/doctor/appointments/{id}/scan-upload` que utiliza **`zxing-cpp`** en el backend Python (FastAPI).
+  - Tanto cuando el médico toma una foto en el celular (`mobile-scanner.html`) como cuando sube un archivo QR desde la PC (`app.js`), el archivo se envía directamente al servidor.
+  - El servidor la procesa con Pillow, decodifica el token usando los algoritmos nativos de `zxing-cpp` (los cuales son sumamente robustos contra ruido y rotación), y finaliza el turno si corresponde.
 
 #### Convenciones Adicionales Para Agentes
 - En `index.html` la versión de cache-busting para `app.js` debe actualizarse cuando se realicen cambios en el portal de validación o el escáner móvil para evitar conflictos de caché.
-- Si se modifica la estructura del modal de validación, mantener las tres vías de check-in: cámara web, escaneo con celular (vinculación) y carga manual/archivo.
+- Si se modifica la estructura del modal de validación, mantener las tres vías de check-in: escaneo con celular (vinculación), subir archivo y carga manual.
+- Siempre comprobar que el parámetro `auth` del QR móvil use el token activo y no quede como `null`.
+- El endpoint `scan-upload` de backend requiere la dependencia de PyPI `zxing-cpp` y `PIL/Pillow`.
+- Todos los métodos de carga de archivo QR de check-in (tanto móvil como escritorio) deben delegar en el endpoint `scan-upload` en vez de usar decodificadores locales de Javascript.
+
+
+
+
 
 
