@@ -316,9 +316,26 @@ Tools disponibles:
 - Siempre comprobar que el parámetro `auth` del QR móvil use el token activo y no quede como `null`.
 - El endpoint `scan-upload` de backend requiere la dependencia de PyPI `zxing-cpp` y `PIL/Pillow`.
 - Todos los métodos de carga de archivo QR de check-in (tanto móvil como escritorio) deben delegar en el endpoint `scan-upload` en vez de usar decodificadores locales de Javascript.
+- Al desplegar cambios en producción, nunca commitear el archivo `.env`. El `.env` de producción vive únicamente en `/home/ubuntu/app/.env` en el servidor de Oracle Cloud.
 
+### Fase 6 (Completada) - Despliegue en la Nube (Oracle Cloud Always Free & CI/CD)
 
+#### Arquitectura de Producción
+- **Instancia**: Oracle Cloud `VM.Standard.E2.1.Micro` (Always Free). 1 OCPU (AMD x86_64), 1 GB RAM, 46 GB Boot Volume con Ubuntu 24.04 LTS.
+- **Memoria Swap (3 GB)**: Para compensar el límite de 1 GB de RAM física y evitar caídas por Out-Of-Memory (OOM) al levantar Docker, Postgres, Redis y n8n, se configuró un archivo de intercambio virtual (Swap) de 3 GB en disco SSD con `swappiness=10`.
+- **Base de Datos**: PostgreSQL corre de forma interna en Docker. En la inicialización inicial del seed (`app/seed.py`), se incorporaron transacciones anidadas (`session.begin_nested()`) para evitar que fallos menores (como limpiar tablas de checkpoints inexistentes en una BD virgen) aborten la transacción e impidan el arranque de la API.
+- **Red y Firewall (Oracle VCN)**:
+  - Se abrieron puertos de entrada (**Ingress Rules**) en la red de Oracle (VCN): port `8000` (FastAPI), `80` (HTTP) y `443` (HTTPS).
+  - Se de-bloquearon reglas equivalentes en el host Linux local usando `iptables` y `netfilter-persistent` para permitir que el tráfico externo alcance los contenedores Docker.
 
-
-
-
+#### Pipeline de Despliegue CI/CD (GitHub Actions)
+- Archivo de flujo: `.github/workflows/deploy.yml`.
+- Se ejecuta automáticamente ante cualquier `git push origin main`.
+- **Flujo**:
+  1. Descarga el código y configura SSH en el runner mediante los secrets del repositorio (`SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`).
+  2. Transfiere de manera incremental y segura el código al directorio `/home/ubuntu/app` usando `rsync`, excluyendo bases de datos locales, archivos `.git` y el archivo de entorno `.env`.
+  3. Ejecuta de forma remota `docker compose up -d --build` en el servidor, levantando todas las dependencias sin interrumpir el archivo `.env` de producción.
+- **Secrets del Repo requeridos**:
+  - `SSH_HOST`: Dirección IP pública del servidor.
+  - `SSH_USER`: Nombre del usuario administrador (`ubuntu`).
+  - `SSH_PRIVATE_KEY`: Contenido de la clave privada SSH `.key` descargada de Oracle Cloud.

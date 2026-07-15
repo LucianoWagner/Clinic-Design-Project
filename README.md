@@ -50,3 +50,10 @@ Una vez levantados los contenedores, podés acceder a los servicios en las sigui
 2. **Orquestador (LangGraph):** Decide dinámicamente si usar herramientas como `search_availability`, `hold_slot` o `confirm_appointment` según lo que el usuario pida en lenguaje natural.
 3. **Notificaciones (n8n + Outbox):** Al confirmar un turno, el backend registra el correo en la tabla outbox de PostgreSQL. Post-commit, se envía al webhook de n8n, el cual despacha un correo HTML profesional vía Gmail SMTP.
 
+## Despliegue en Producción (CI/CD)
+
+El proyecto está configurado para un despliegue continuo automatizado en **Oracle Cloud Always Free** (instancia Ubuntu 24.04 con Docker):
+
+* **CI/CD**: Cada push a `main` dispara un workflow en GitHub Actions que sincroniza incrementalmente los archivos con el servidor usando `rsync` y reinicia los contenedores.
+* **Seguridad**: Las claves de producción no se commitean y residen de forma segura en `/home/ubuntu/app/.env` dentro del servidor.
+* **Acceso**: La aplicación es accesible temporalmente por IP en el puerto 8000: `http://146.235.32.199:8000`.
