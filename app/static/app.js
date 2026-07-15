@@ -2618,7 +2618,7 @@ const doctorPortal = {
             height: 180,
             colorDark: "#0b0f19",
             colorLight: "#ffffff",
-            correctLevel: QRCode.CorrectLevel.H
+            correctLevel: QRCode.CorrectLevel.L
           });
           console.log("[DoctorPortal] QRCode generated successfully");
         } else {
