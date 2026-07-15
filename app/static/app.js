@@ -2510,15 +2510,17 @@ const doctorPortal = {
       btn.addEventListener("click", () => {
         const id = btn.dataset.id;
         const action = btn.dataset.action;
+        console.log("[DoctorPortal] Clicked action button:", { id, action });
         if (action === "finished") {
-          const app = this.appointments.find(a => String(a.id) === String(id));
+          const app = doctorPortal.appointments.find(a => String(a.id) === String(id));
           if (app) {
-            this.openQRScanner(app);
+            console.log("[DoctorPortal] Opening QR scanner for appointment:", app);
+            doctorPortal.openQRScanner(app);
           } else {
-            console.error("Turno no encontrado para escanear QR", id);
+            console.error("[DoctorPortal] Turno no encontrado para escanear QR", id, doctorPortal.appointments);
           }
         } else {
-          this.updateAppointmentStatus(id, action);
+          doctorPortal.updateAppointmentStatus(id, action);
         }
       });
     });
@@ -2553,21 +2555,36 @@ const doctorPortal = {
   webcamStream: null,
 
   async openQRScanner(app) {
-    this.currentQRApp = app;
-    this.currentQRTab = "mobile";
+    console.log("[DoctorPortal] openQRScanner called with app:", app);
+    doctorPortal.currentQRApp = app;
+    doctorPortal.currentQRTab = "mobile";
 
     const modal = $("qrScanModal");
     const card = $("qrScanCard");
-    if (!modal || !card) return;
+    if (!modal || !card) {
+      console.error("[DoctorPortal] Missing qrScanModal or qrScanCard element!");
+      return;
+    }
 
-    $("qrPatientName").textContent = app.patient_name;
-    const startsStr = parseApiDate(app.starts_at).toLocaleString("es-AR", {
-      weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
-    });
-    $("qrStartsAt").textContent = startsStr;
+    const patientNameEl = $("qrPatientName");
+    if (patientNameEl) patientNameEl.textContent = app.patient_name || "Paciente";
+
+    let startsStr = "Fecha no disponible";
+    try {
+      const apiDate = parseApiDate(app.starts_at);
+      if (apiDate) {
+        startsStr = apiDate.toLocaleString("es-AR", {
+          weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
+        });
+      }
+    } catch (dateErr) {
+      console.error("[DoctorPortal] Error parsing appointment date:", dateErr);
+    }
+    const startsAtEl = $("qrStartsAt");
+    if (startsAtEl) startsAtEl.textContent = startsStr;
 
     // Reset UI tabs to default
-    this.updateQRTabUI();
+    doctorPortal.updateQRTabUI();
 
     // Reset file and manual inputs
     const fileInput = $("qrFileInput");
@@ -2583,7 +2600,7 @@ const doctorPortal = {
     if (manualInput) manualInput.value = "";
 
     // Clean up any old state first without triggering modal hide animation
-    await this.cleanupScanner();
+    await doctorPortal.cleanupScanner();
 
     // Generar el código QR para el escáner móvil
     const container = $("qrMobileCodeContainer");
@@ -2591,27 +2608,40 @@ const doctorPortal = {
       container.innerHTML = "";
       const token = authToken || localStorage.getItem("accessToken");
       const mobileUrl = `${window.location.protocol}//${window.location.host}/mobile-scanner.html?app_id=${app.id}&auth=${encodeURIComponent(token)}`;
-      this.mobileQrCodeInstance = new QRCode(container, {
-        text: mobileUrl,
-        width: 180,
-        height: 180,
-        colorDark: "#0b0f19",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.H
-      });
+      console.log("[DoctorPortal] Mobile QR URL:", mobileUrl);
+      
+      try {
+        if (typeof QRCode !== 'undefined') {
+          doctorPortal.mobileQrCodeInstance = new QRCode(container, {
+            text: mobileUrl,
+            width: 180,
+            height: 180,
+            colorDark: "#0b0f19",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
+          });
+          console.log("[DoctorPortal] QRCode generated successfully");
+        } else {
+          console.error("[DoctorPortal] QRCode class is undefined. qrcode.js might have failed to load.");
+          container.innerHTML = `<div class="text-xs text-red-400 p-4 text-center">Error: No se pudo cargar el generador de QR. Podés validar manualmente abajo.</div>`;
+        }
+      } catch (qrErr) {
+        console.error("[DoctorPortal] Error instantiating QRCode:", qrErr);
+        container.innerHTML = `<div class="text-xs text-red-400 p-4 text-center">Error al generar QR: ${qrErr.message}</div>`;
+      }
     }
 
     // Comenzar a consultar el estado del turno por si se valida vía celular
-    this.startPollingStatus(app);
+    doctorPortal.startPollingStatus(app);
 
     // Mostrar modal
+    console.log("[DoctorPortal] Displaying modal...");
     modal.classList.remove("hidden");
     modal.classList.add("flex");
     setTimeout(() => {
       card.classList.remove("scale-95", "opacity-0");
       card.classList.add("scale-100", "opacity-100");
     }, 50);
-
   },
 
   startPollingStatus(app) {
@@ -2796,38 +2826,38 @@ const doctorPortal = {
   },
 
   async cleanupScanner() {
-    this.isScanning = false;
+    doctorPortal.isScanning = false;
     
     // Detiene la consulta de estado en segundo plano si está activa
-    if (this.pollingIntervalId) {
-      clearInterval(this.pollingIntervalId);
-      this.pollingIntervalId = null;
+    if (doctorPortal.pollingIntervalId) {
+      clearInterval(doctorPortal.pollingIntervalId);
+      doctorPortal.pollingIntervalId = null;
     }
 
-    if (this.mobileQrCodeInstance) {
-      this.mobileQrCodeInstance = null;
+    if (doctorPortal.mobileQrCodeInstance) {
+      doctorPortal.mobileQrCodeInstance = null;
     }
 
     // Detiene el escáner continuo si está activo
-    if (this.html5QrCode && this.cameraScanningActive) {
-      this.cameraScanningActive = false;
+    if (doctorPortal.html5QrCode && doctorPortal.cameraScanningActive) {
+      doctorPortal.cameraScanningActive = false;
       try {
-        await this.html5QrCode.stop();
+        await doctorPortal.html5QrCode.stop();
       } catch (err) {
         console.warn("Error stopping html5QrCode camera:", err);
       }
     }
 
-    if (this.html5QrCode) {
+    if (doctorPortal.html5QrCode) {
       try {
-        await this.html5QrCode.clear();
+        await doctorPortal.html5QrCode.clear();
       } catch (e) {}
-      this.html5QrCode = null;
+      doctorPortal.html5QrCode = null;
     }
   },
 
   async closeQRScanner() {
-    this.currentQRApp = null;
+    doctorPortal.currentQRApp = null;
     const modal = $("qrScanModal");
     const card = $("qrScanCard");
 
@@ -2836,7 +2866,7 @@ const doctorPortal = {
       card.classList.add("scale-95", "opacity-0");
     }
 
-    await this.cleanupScanner();
+    await doctorPortal.cleanupScanner();
 
     return new Promise((resolve) => {
       setTimeout(() => {
