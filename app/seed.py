@@ -18,9 +18,10 @@ def clean_database(session: Session) -> None:
     
     # Romper referencias circulares temporales
     try:
-        session.execute(text("UPDATE appointment_slots SET held_by_interaction_session_id = NULL"))
-        session.execute(text("UPDATE interaction_sessions SET pending_slot_id = NULL"))
-        session.flush()
+        with session.begin_nested():
+            session.execute(text("UPDATE appointment_slots SET held_by_interaction_session_id = NULL"))
+            session.execute(text("UPDATE interaction_sessions SET pending_slot_id = NULL"))
+            session.flush()
     except Exception as e:
         print(f"Advertencia al romper referencias circulares: {e}")
         
@@ -49,15 +50,18 @@ def clean_database(session: Session) -> None:
     
     # 8. Limpiar checkpoints de LangGraph (tablas internas)
     try:
-        session.execute(text("DELETE FROM checkpoint_writes"))
-        session.execute(text("DELETE FROM checkpoint_blobs"))
-        session.execute(text("DELETE FROM checkpoints"))
+        with session.begin_nested():
+            session.execute(text("DELETE FROM checkpoint_writes"))
+            session.execute(text("DELETE FROM checkpoint_blobs"))
+            session.execute(text("DELETE FROM checkpoints"))
+            session.flush()
         print("Tablas de checkpoints de LangGraph limpiadas.")
     except Exception as e:
         print(f"No se pudieron limpiar las tablas de checkpoints (quizás no existan aún): {e}")
         
     session.flush()
     print("Base de datos limpia.")
+
 
 
 def is_already_seeded(session: Session) -> bool:
