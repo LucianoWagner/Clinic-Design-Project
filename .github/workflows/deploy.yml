@@ -1,0 +1,40 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Create App Directory on Server
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "mkdir -p /home/ubuntu/app"
+
+      - name: Deploy Code using rsync
+        run: |
+          rsync -avz --delete \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude '.env' \
+            --exclude '__pycache__/' \
+            --exclude '*.pyc' \
+            --exclude 'postgres_data/' \
+            --exclude 'n8n_data/' \
+            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/ubuntu/app/
+
+      - name: Start Application via Docker Compose
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /home/ubuntu/app && docker compose up -d --build"

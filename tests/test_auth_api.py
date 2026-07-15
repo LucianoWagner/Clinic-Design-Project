@@ -202,3 +202,26 @@ def test_websocket_requires_auth_and_ownership(client: TestClient) -> None:
         websocket.send_json({"type": "auth", "token": user_b["access_token"]})
         message = websocket.receive_json()
         assert message["type"] == "error"
+
+
+def test_production_settings_validation() -> None:
+    from app.core.config import Settings
+    from pydantic import ValidationError
+    
+    # Valid development config
+    dev_settings = Settings(environment="development", jwt_secret_key="dev-change-me", groq_api_key="")
+    assert dev_settings.environment == "development"
+    
+    # Invalid production configs
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(environment="production", jwt_secret_key="dev-change-me")
+    assert "JWT_SECRET_KEY" in str(exc_info.value)
+
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(environment="production", jwt_secret_key="secure-key", groq_api_key="")
+    assert "GROQ_API_KEY" in str(exc_info.value)
+    
+    # Valid production config
+    prod_settings = Settings(environment="production", jwt_secret_key="secure-key", groq_api_key="gsk_...")
+    assert prod_settings.environment == "production"
+

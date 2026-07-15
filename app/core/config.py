@@ -1,5 +1,5 @@
 from functools import lru_cache
-
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,6 +29,19 @@ class Settings(BaseSettings):
     email_from: str = "Consultorio <turnos@example.com>"
     resend_api_key: str | None = None
     n8n_webhook_url: str | None = None
+
+    @model_validator(mode="after")
+    def validate_production_keys(self) -> 'Settings':
+        if self.environment == "production":
+            if self.jwt_secret_key == "dev-change-me":
+                raise ValueError(
+                    "En producción, JWT_SECRET_KEY debe cambiarse de 'dev-change-me' a una clave aleatoria y segura."
+                )
+            if not self.groq_api_key:
+                raise ValueError(
+                    "En producción, GROQ_API_KEY no puede estar vacía."
+                )
+        return self
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
